@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Session todos",
+    "description": "A todo checkbox on every session row plus a dedicated page grouping sessions as in progress, to do, and done."
+  }
+}
