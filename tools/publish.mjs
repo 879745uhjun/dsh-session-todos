@@ -2,11 +2,19 @@
 /**
  * Publish one plugin directory to a GitHub repository through the REST API.
  *
- * git over HTTPS cannot negotiate TLS in this environment (schannel:
- * SEC_E_NO_CREDENTIALS), so this script uses the same REST API the web UI
- * uses. A brand new repository has no git database yet, so the first file is
- * committed through the Contents API; every other file then lands in a second
- * commit through the Git Data API. Running it again appends a commit.
+ * The normal publishing path is a real 'git push'. This fallback exists for
+ * environments where the HTTPS transport cannot authenticate at that moment —
+ * for example a sandbox without access to the Windows credential store, which
+ * surfaces as 'schannel: AcquireCredentialsHandle failed:
+ * SEC_E_NO_CREDENTIALS'. It is NOT a machine-level limitation: configuring a
+ * credential helper ('git config credential.helper "!gh auth git-credential"')
+ * makes plain 'git push' work. Treat a failure as "this push failed, fall back
+ * to the REST API", not as "this machine cannot push".
+ *
+ * It speaks the same Git Data API the web UI uses. A brand new repository has
+ * no git database yet, so the first file is committed through the Contents
+ * API; every other file then lands in a second commit through the Git Data
+ * API. Running it again appends a commit.
  *
  * Environment:
  *   GITHUB_TOKEN     token with repo scope (gh auth token)
