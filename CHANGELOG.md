@@ -2,6 +2,14 @@
 
 本文件记录 dsh-session-todos 的每次可见变化。版本号遵循语义化版本。
 
+## 未发布
+
+### 修复
+
+- **工具参数改为 JSON Schema 对象根。** 此前 `session_todos` 的 `parameters` 是裸属性表（照 `session-stars` 的写法抄来，而那本身就是缺陷），属性名 `title` 被模型 API 当作 JSON Schema 关键字（值必须是字符串，这里却是对象），整轮请求直接 400，与要做什么无关。现在 `parameters` 是 `{ type: 'object', properties: {…}, required: ['action'] }`，`required` 提到根级，属性内不再出现 `required`。
+  教训：**不要照着别的插件抄 schema 写法**——裸表只要有一个属性名撞上 `title` / `description` / `default` / `enum` / `type` / `items` / `properties` 等关键字就会整轮失败，且报错与业务无关，极难定位。
+- 新增回归测试 `session_todos ships a JSON Schema object root, not a bare property table`：根键恰为 `type / properties / required`，`required` ⊆ `properties`，属性不带 `required`，`type` 为单字符串，`enum` 为非空字符串数组，`output.schema` 为对象。
+
 ## 0.1.0 — 2026-11-15
 
 首个可安装版本：每个会话一条待办，方格 + 待办页面 + AI 工具。
