@@ -93,6 +93,39 @@ test('exports the plugin name', () => {
   assert.equal(name, 'dsh-session-todos')
 })
 
+test('session_todos ships a JSON Schema object root, not a bare property table', (t) => {
+  const host = createHost(createHome(t))
+  const tool = host.tools.find((candidate) => candidate.name === 'session_todos')
+  assert.ok(tool, 'session_todos tool is registered')
+  const parameters = tool.parameters
+
+  // A bare table would put property names at the top level; then a property
+  // named `title` is read as the JSON Schema `title` keyword and the whole
+  // request fails with 400. Pin the root shape so that cannot come back.
+  assert.deepEqual(Object.keys(parameters).sort(), ['properties', 'required', 'type'])
+  assert.equal(parameters.type, 'object')
+  assert.ok(parameters.properties !== null && typeof parameters.properties === 'object' && !Array.isArray(parameters.properties))
+
+  assert.ok(Array.isArray(parameters.required))
+  for (const name of parameters.required) {
+    assert.ok(Object.hasOwn(parameters.properties, name), 'required entry ' + name + ' must exist in properties')
+  }
+
+  for (const [name, spec] of Object.entries(parameters.properties)) {
+    assert.ok(spec !== null && typeof spec === 'object' && !Array.isArray(spec), name + ' must be a schema object')
+    assert.equal(Object.hasOwn(spec, 'required'), false, name + ' must not carry a property-level required')
+    assert.equal(typeof spec.type, 'string', name + ' must declare a single string type')
+    assert.notEqual(Array.isArray(spec.type), true, name + ' must not use an array type')
+    if (Object.hasOwn(spec, 'enum')) {
+      assert.ok(Array.isArray(spec.enum) && spec.enum.length > 0, name + ' enum must be a non-empty array')
+      for (const value of spec.enum) assert.equal(typeof value, 'string', name + ' enum values must be strings')
+    }
+  }
+
+  // The result schema has the same constraint.
+  assert.deepEqual(tool.output.schema, { type: 'object' })
+})
+
 test('the agent tool marks a session done and lists it', async (t) => {
   const home = createHome(t)
   const host = createHost(home)
