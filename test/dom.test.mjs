@@ -132,8 +132,36 @@ function reply(payload) {
 
 const clone = (value) => JSON.parse(JSON.stringify(value))
 
+// 'off' keeps every legacy test on the flat list; the box tests turn it on.
+let boxesMode = 'off'
+
+const boxesPayload = {
+  ok: true,
+  state: {
+    boxes: [
+      { id: 'b-work', name: 'Work', color: 'blue', collapsed: false, parentId: null, order: 0 },
+      { id: 'b-sub', name: 'Sub', color: 'amber', collapsed: false, parentId: 'b-work', order: 1 },
+      { id: 'b-empty', name: 'Empty box', color: 'gray', collapsed: false, parentId: null, order: 2 },
+    ],
+    memberships: {
+      'session-idle': ['b-work'],
+      'session-running': ['b-sub'],
+    },
+  },
+}
+
 const fetch = (url, init) => {
   requests.push({ url, init })
+  if (String(url).includes('/session-boxes')) {
+    if (boxesMode === 'ok') return reply(clone(boxesPayload))
+    if (boxesMode === 'badjson') {
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.reject(new SyntaxError('bad json')) })
+    }
+    if (boxesMode === 'abort') {
+      return Promise.reject(Object.assign(new Error('aborted'), { name: 'AbortError' }))
+    }
+    return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({ ok: false }) })
+  }
   if (init !== undefined && init.method === 'POST') {
     const body = JSON.parse(init.body)
     if (body.action === 'clear') delete serverTodos[body.sessionId]
@@ -218,8 +246,13 @@ const plugin = captured.factory(() => React)
  * Render helpers
  * ------------------------------------------------------------------ */
 
-function renderComponent(type, props) {
-  resetHooks()
+function renderComponent(type, props, keepState = false) {
+  if (!keepState) resetHooks()
+  else {
+    // Re-read the same slots from the top, but keep the values a click wrote.
+    cursor = 0
+    pendingEffects = []
+  }
   const tree = typeof type === 'function' ? type(props ?? {}) : type
   const collected = []
   collect(tree, collected)
@@ -264,6 +297,7 @@ const settle = async () => {
 
 function boot() {
   serverTodos = clone(todos)
+  boxesMode = 'off'
   const locale = {
     dictionaries: {},
     register(namespace, dictionaries) {
@@ -416,6 +450,74 @@ test('the page renders a note and a priority without crashing', async () => {
   const priorities = byClass(nodes, 'st-priority')
   assert.equal(priorities.length, 2)
   assert.ok(priorities.some((node) => node.props['data-priority'] === 'high'))
+})
+
+/** Concatenated text of a rendered subtree. */
+function textOf(node) {
+  if (node === null || node === undefined || node === true || node === false) return ''
+  if (typeof node === 'string' || typeof node === 'number') return String(node)
+  if (Array.isArray(node)) return node.map((child) => textOf(child)).join('')
+  if (typeof node === 'object' && node.props !== undefined) return textOf(node.props.children)
+  return ''
+}
+
+/** Render once so the boxes fetch starts, settle it, then render the result. */
+async function openPage(registrations, mode) {
+  boxesMode = mode
+  const page = registrations.find((entry) => (entry.definition?.name ?? '') === 'main').component
+  renderComponent(page, {})
+  await settle()
+  return { page, nodes: renderComponent(page, {}) }
+}
+
+test('the page groups todos by session boxes and names child boxes', async () => {
+  const { registrations } = boot()
+  await settle()
+  const { nodes } = await openPage(registrations, 'ok')
+
+  const names = byClass(nodes, 'st-section-name').map((node) => textOf(node.props.children))
+  assert.deepEqual(names, ['Work', 'Work \u203a Sub', 'Ungrouped'])
+
+  const badges = byClass(nodes, 'st-count').map((node) => textOf(node.props.children))
+  assert.deepEqual(badges, ['1/1', '1/1', '0/1'])
+
+  const titles = byClass(nodes, 'st-row-title').map((node) => node.props.children).sort()
+  assert.deepEqual(titles, ['Done session', 'Idle session', 'Running session'])
+
+  const dots = byClass(nodes, 'st-dot')
+  assert.ok(dots.length >= 2, 'box colour dots render')
+})
+
+test('a parent chip includes its child boxes and filters the groups', async () => {
+  const { registrations } = boot()
+  await settle()
+  const { page, nodes } = await openPage(registrations, 'ok')
+
+  const chips = byClass(nodes, 'st-chip')
+  assert.deepEqual(chips.map((chip) => textOf(chip)), ['All3', 'Ungrouped1', 'Work2', 'Sub1'])
+
+  chips[2].props.onClick({ preventDefault() {}, stopPropagation() {} })
+  const filtered = renderComponent(page, {}, true)
+  const names = byClass(filtered, 'st-section-name').map((node) => textOf(node.props.children))
+  assert.deepEqual(names, ['Work', 'Work \u203a Sub'])
+  assert.equal(byClass(filtered, 'st-row').length, 2)
+
+  const ungroupedChip = byClass(filtered, 'st-chip')[1]
+  ungroupedChip.props.onClick({ preventDefault() {}, stopPropagation() {} })
+  const loose = renderComponent(page, {}, true)
+  assert.deepEqual(byClass(loose, 'st-section-name').map((node) => textOf(node.props.children)), ['Ungrouped'])
+  assert.equal(byClass(loose, 'st-row').length, 1)
+})
+
+test('a missing, broken, or aborted boxes route keeps the flat sections', async () => {
+  for (const mode of ['404', 'badjson', 'abort']) {
+    const { registrations } = boot()
+    await settle()
+    const { nodes } = await openPage(registrations, mode)
+    const names = byClass(nodes, 'st-section-name').map((node) => textOf(node.props.children))
+    assert.deepEqual(names, ['In progress', 'To do', 'Done'], 'mode ' + mode)
+    assert.equal(byClass(nodes, 'st-chip').length, 0, 'mode ' + mode + ' renders no chips')
+  }
 })
 
 test('the stylesheet is injected once and removed by its disposer', () => {

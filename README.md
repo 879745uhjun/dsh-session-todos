@@ -26,6 +26,17 @@ A todo checkbox on every session row in the DeepSeek Harness sidebar, plus a ded
 
 An explicit check wins: a session that runs again after being marked done stays in Done until you uncheck it.
 
+## Session boxes integration
+
+When `dsh-session-boxes` is installed, the Todo page groups by box (read-only: same-origin `GET /session-boxes`; its code is never imported and its JSON file is never read):
+
+- **Grouping** — one group per box, child boxes labelled `Parent › Child` and preceded by the box colour dot; ungrouped todos always come last;
+- **Group stats** — the header shows `open/total` (for example `2/5`);
+- **Filter chips** — `All` / `Ungrouped` / one chip per non-empty box. A parent chip covers its child boxes;
+- **Ordering inside a group** — the existing order is kept (in progress → to do by priority/due date → done by completion time).
+
+**Degradation:** if the boxes route answers 404, exceeds the 1.5 s timeout, or returns unparseable JSON, the page falls back to the flat "in progress / to do / done" sections — no error, no blocking. Row checkboxes, the … menu, SSE sync, the storage format, and the `/session-todos` contract are untouched. Installing the boxes plugin later needs no restart: the page re-reads the route every time it opens.
+
 ## Why the square sits on the right
 
 The leading cell of a session row belongs to the app: it shows a running dot while the session works and a completion reminder once it finishes. Any control placed there disappears with those states, so the square lives in the row's trailing seat (next to the star) where it is always visible and never moves.

@@ -31,6 +31,21 @@ window.__ModuleLoader__.load({
     const MAX_ROWS = 300
     const PRIORITIES = ['low', 'normal', 'high']
     const PRIORITY_RANK = { low: 0, normal: 1, high: 2 }
+    const BOXES_ENDPOINT = '/session-boxes'
+    const BOX_TIMEOUT_MS = 1500
+    const STATE_RANK = { doing: 0, todo: 1, done: 2 }
+    const BOX_COLORS = {
+      blue: 'var(--dsw-alias-state-business-primary)',
+      cyan: 'var(--dsw-alias-state-business-primary)',
+      teal: 'var(--dsw-alias-state-success-primary)',
+      green: 'var(--dsw-alias-state-success-primary)',
+      amber: 'var(--dsw-alias-state-warn-primary)',
+      yellow: 'var(--dsw-alias-state-warn-primary)',
+      red: 'var(--dsw-alias-state-error-primary)',
+      pink: 'var(--dsw-alias-state-error-primary)',
+      purple: 'var(--dsw-alias-brand-primary)',
+      gray: 'var(--dsw-alias-label-secondary)',
+    }
 
     /* ------------------------------------------------------------------ *
      * Dictionaries (English is the key-set source of truth)
@@ -43,6 +58,11 @@ window.__ModuleLoader__.load({
       'box.done': 'Done — click to reopen',
       'menu.done': 'Mark as done',
       'menu.undone': 'Mark as not done',
+      'chips.all': 'All',
+      'chips.unassigned': 'Ungrouped',
+      'group.unassigned': 'Ungrouped',
+      'group.joint': ' \u203a ',
+      'group.badge': '{open} open of {total}',
       'page.title': 'Todos',
       'page.subtitle': 'Every session as one task: in progress, to do, done',
       'page.search': 'Search sessions and notes',
@@ -93,6 +113,11 @@ window.__ModuleLoader__.load({
       'box.done': '已完成，点击取消',
       'menu.done': '标记为已完成',
       'menu.undone': '标记为未完成',
+      'chips.all': '全部',
+      'chips.unassigned': '未分组',
+      'group.unassigned': '未分组',
+      'group.joint': ' \u203a ',
+      'group.badge': '未完成 {open}/{total}',
       'page.title': '待办',
       'page.subtitle': '每个会话就是一条待办：正在做、将要做、已做完',
       'page.search': '搜索会话或备注',
@@ -267,6 +292,19 @@ window.__ModuleLoader__.load({
       '.st-notice{margin:10px 0;padding:10px 12px;border-radius:var(--dsw-radius-md,8px);font-size:12px;',
       'background:color-mix(in srgb,var(--dsw-alias-state-warn-primary) 12%,transparent);',
       'color:var(--dsw-alias-state-warn-primary)}',
+      '.st-chips{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 14px}',
+      '.st-chip{appearance:none;font:inherit;font-size:12px;line-height:18px;height:26px;padding:0 10px;',
+      'border-radius:999px;border:.5px solid var(--dsw-alias-border-l2);background:transparent;',
+      'color:var(--dsw-alias-label-secondary);cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}',
+      '.st-chip:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}',
+      '.st-chip[data-active=true]{border-color:var(--dsw-alias-state-business-primary);',
+      'color:var(--dsw-alias-state-business-primary);',
+      'background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 10%,transparent)}',
+      '.st-chip:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:1px}',
+      '.st-chip-count{font-variant-numeric:tabular-nums;font-size:11px;color:var(--dsw-alias-label-tertiary)}',
+      '.st-chip[data-active=true] .st-chip-count{color:inherit}',
+      '.st-dot{width:7px;height:7px;border-radius:50%;flex:none;display:inline-block}',
+      '.st-section-head .st-dot{margin-left:2px}',
       '.st-note-line{margin-top:10px;font-size:11px;color:var(--dsw-alias-label-tertiary)}',
       '@media (max-width:720px){.st-head{padding:14px 16px 10px;flex-wrap:wrap}',
       '.st-scroll{padding:0 16px 28px}.st-search{width:100%;max-width:none}',
@@ -561,6 +599,186 @@ window.__ModuleLoader__.load({
         if (state.status === 'loading') void todosStore.refresh()
       }, [state.status])
       return state
+    }
+
+    /* ------------------------------------------------------------------ *
+     * Session boxes (read-only, optional)
+     * ------------------------------------------------------------------ */
+
+    /** Validate one /session-boxes payload; null means "treat as unavailable". */
+    function normalizeBoxesPayload(payload) {
+      if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) return null
+      if (payload.ok !== true) return null
+      const state = payload.state
+      if (state === null || typeof state !== 'object' || Array.isArray(state)) return null
+      const boxes = []
+      const seen = new Set()
+      for (const raw of Array.isArray(state.boxes) ? state.boxes : []) {
+        if (raw === null || typeof raw !== 'object') continue
+        const id = typeof raw.id === 'string' ? raw.id : ''
+        const name = typeof raw.name === 'string' ? raw.name.trim() : ''
+        if (id === '' || name === '' || seen.has(id)) continue
+        seen.add(id)
+        boxes.push({
+          id,
+          name,
+          color: typeof raw.color === 'string' ? raw.color : '',
+          parentId: typeof raw.parentId === 'string' && raw.parentId !== '' ? raw.parentId : null,
+          order: Number.isFinite(Number(raw.order)) ? Number(raw.order) : 0,
+        })
+      }
+      const memberships = {}
+      const rawMemberships = state.memberships
+      if (rawMemberships !== null && typeof rawMemberships === 'object' && !Array.isArray(rawMemberships)) {
+        for (const [sessionId, list] of Object.entries(rawMemberships)) {
+          if (typeof sessionId !== 'string' || sessionId === '' || !Array.isArray(list)) continue
+          const ids = list.filter((value) => typeof value === 'string' && value !== '')
+          if (ids.length > 0) memberships[sessionId] = ids
+        }
+      }
+      return { boxes, memberships }
+    }
+
+    /**
+     * Read-only view of dsh-session-boxes. A missing route, a timeout, or a bad
+     * payload all collapse to 'available: false', so the page keeps its flat
+     * list instead of failing.
+     */
+    function createBoxesStore() {
+      let state = { status: 'idle', available: false, boxes: [], memberships: {} }
+      const listeners = new Set()
+      let inflight = null
+
+      function publish(next) {
+        state = next
+        for (const listener of listeners) listener()
+      }
+
+      function refresh() {
+        if (inflight !== null) return inflight
+        inflight = (async () => {
+          let timer = null
+          const controller = typeof AbortController === 'function' ? new AbortController() : null
+          if (controller !== null) {
+            timer = setTimeout(() => {
+              try {
+                controller.abort()
+              } catch {
+                /* already aborted */
+              }
+            }, BOX_TIMEOUT_MS)
+          }
+          try {
+            const response = await fetch(BOXES_ENDPOINT, {
+              headers: { accept: 'application/json' },
+              cache: 'no-store',
+              signal: controller === null ? undefined : controller.signal,
+            })
+            if (response.ok !== true) throw new Error('HTTP ' + response.status)
+            const payload = await response.json()
+            const parsed = normalizeBoxesPayload(payload)
+            if (parsed === null) throw new Error('invalid boxes payload')
+            publish({ status: 'ready', available: true, boxes: parsed.boxes, memberships: parsed.memberships })
+          } catch {
+            publish({ status: 'ready', available: false, boxes: [], memberships: {} })
+          } finally {
+            if (timer !== null) clearTimeout(timer)
+            inflight = null
+          }
+        })()
+        return inflight
+      }
+
+      return {
+        getSnapshot: () => state,
+        subscribe(listener) {
+          listeners.add(listener)
+          return () => {
+            listeners.delete(listener)
+          }
+        },
+        refresh,
+      }
+    }
+
+    const boxesStore = createBoxesStore()
+
+    function useBoxesState() {
+      const state = React.useSyncExternalStore(boxesStore.subscribe, boxesStore.getSnapshot, boxesStore.getSnapshot)
+      // Refresh whenever the page mounts, so a boxes plugin installed later is
+      // picked up without a DSH restart.
+      useEffect(() => {
+        void boxesStore.refresh()
+      }, [])
+      return state
+    }
+
+    /** Identity index over the box list: lookup, display order, children. */
+    function buildBoxIndex(boxes) {
+      const byId = new Map()
+      for (const box of boxes) byId.set(box.id, box)
+      const ordered = boxes.slice().sort((left, right) => (left.order - right.order) || left.name.localeCompare(right.name))
+      const rank = new Map()
+      ordered.forEach((box, index) => rank.set(box.id, index))
+      const children = new Map()
+      for (const box of boxes) {
+        const key = box.parentId !== null && byId.has(box.parentId) ? box.parentId : ''
+        if (!children.has(key)) children.set(key, [])
+        children.get(key).push(box)
+      }
+      return { byId, ordered, rank, children }
+    }
+
+    /** 'parent > child' for a child box, the name itself for a root box. */
+    function boxDisplayName(box, index, joint) {
+      const parent = box.parentId === null ? null : index.byId.get(box.parentId)
+      return parent === undefined || parent === null ? box.name : parent.name + joint + box.name
+    }
+
+    /** Every box in one subtree, the box itself included. */
+    function boxScope(boxId, index) {
+      const ids = new Set([boxId])
+      const stack = [boxId]
+      while (stack.length > 0) {
+        const current = stack.pop()
+        for (const child of index.children.get(current) ?? []) {
+          if (ids.has(child.id)) continue
+          ids.add(child.id)
+          stack.push(child.id)
+        }
+      }
+      return ids
+    }
+
+    /** The box a row is grouped under: the earliest-ordered membership, or null. */
+    function primaryBoxOf(sessionId, memberships, index) {
+      const list = memberships[sessionId]
+      if (!Array.isArray(list) || list.length === 0) return null
+      let best = null
+      let bestRank = Number.POSITIVE_INFINITY
+      for (const id of list) {
+        if (!index.byId.has(id)) continue
+        const rank = index.rank.get(id)
+        if (rank === undefined || rank >= bestRank) continue
+        bestRank = rank
+        best = id
+      }
+      return best
+    }
+
+    /** The existing page ordering, applied inside one box group. */
+    function comparePageRows(left, right) {
+      if (left.state !== right.state) return STATE_RANK[left.state] - STATE_RANK[right.state]
+      if (left.state === 'doing') return right.updatedAt - left.updatedAt
+      if (left.state === 'done') return (right.doneAt || right.updatedAt) - (left.doneAt || left.updatedAt)
+      return PRIORITY_RANK[right.priority] - PRIORITY_RANK[left.priority]
+        || (left.dueAt || Number.MAX_SAFE_INTEGER) - (right.dueAt || Number.MAX_SAFE_INTEGER)
+        || right.updatedAt - left.updatedAt
+    }
+
+    /** A box palette name as a theme colour. */
+    function boxColorValue(color) {
+      return BOX_COLORS[color] ?? 'var(--dsw-alias-label-tertiary)'
     }
 
     /* ------------------------------------------------------------------ *
@@ -901,7 +1119,8 @@ window.__ModuleLoader__.load({
     }
 
     /** One collapsible group of rows. */
-    function Section({ kind, title, count, collapsed, onToggle, empty, children, t }) {
+    function Section({ kind, title, count, badge, badgeTitle, color, collapsed, onToggle, empty, children, t }) {
+      const label = badge === undefined ? String(count) : String(badge)
       return h('section', {
         className: 'st-section',
         'data-kind': kind,
@@ -914,8 +1133,9 @@ window.__ModuleLoader__.load({
         onClick: onToggle,
       },
         h(Chevron, { className: 'st-chev' }),
+        color === undefined || color === '' ? null : h('span', { className: 'st-dot', style: { background: color } }),
         h('span', { className: 'st-section-name' }, title),
-        h('span', { className: 'st-count' }, String(count))),
+        h('span', { className: 'st-count', title: badgeTitle }, label)),
       collapsed ? null : h('div', { className: 'st-section-body' },
         count === 0 ? h('div', { className: 'st-empty' }, empty) : children))
     }
@@ -957,6 +1177,9 @@ window.__ModuleLoader__.load({
       const [query, setQuery] = useState('')
       const [showArchived, setShowArchived] = useState(false)
       const [collapsed, setCollapsed] = useState({ doing: false, todo: false, done: true })
+      const boxesState = useBoxesState()
+      const [activeChip, setActiveChip] = useState('all')
+      const [boxCollapsed, setBoxCollapsed] = useState({})
 
       const rows = useMemo(() => {
         const todos = todosState.todos
@@ -986,11 +1209,86 @@ window.__ModuleLoader__.load({
           || row.cwd.toLowerCase().includes(needle))
       }, [rows, needle])
 
+      const boxIndex = useMemo(
+        () => (boxesState.available ? buildBoxIndex(boxesState.boxes) : null),
+        [boxesState],
+      )
+
+      const primaryBoxes = useMemo(() => {
+        if (boxIndex === null) return null
+        const map = new Map()
+        for (const row of matched) map.set(row.id, primaryBoxOf(row.id, boxesState.memberships, boxIndex))
+        return map
+      }, [boxIndex, boxesState.memberships, matched])
+
+      // A box can disappear between refreshes; drop a chip that no longer exists.
+      useEffect(() => {
+        if (boxIndex === null) return
+        if (activeChip === 'all' || activeChip === 'unassigned') return
+        if (!boxIndex.byId.has(activeChip)) setActiveChip('all')
+      }, [boxIndex, activeChip])
+
+      const filteredRows = useMemo(() => {
+        if (boxIndex === null || primaryBoxes === null || activeChip === 'all') return matched
+        if (activeChip === 'unassigned') {
+          return matched.filter((row) => (primaryBoxes.get(row.id) ?? null) === null)
+        }
+        const scope = boxScope(activeChip, boxIndex)
+        return matched.filter((row) => {
+          const id = primaryBoxes.get(row.id)
+          return id !== null && id !== undefined && scope.has(id)
+        })
+      }, [matched, boxIndex, primaryBoxes, activeChip])
+
+      const chips = useMemo(() => {
+        if (boxIndex === null || primaryBoxes === null) return null
+        const list = [{ id: 'all', label: t('chips.all'), count: matched.length, color: '' }]
+        let loose = 0
+        for (const row of matched) if ((primaryBoxes.get(row.id) ?? null) === null) loose += 1
+        list.push({ id: 'unassigned', label: t('chips.unassigned'), count: loose, color: '' })
+        for (const box of boxIndex.ordered) {
+          const scope = boxScope(box.id, boxIndex)
+          let count = 0
+          for (const row of matched) {
+            const id = primaryBoxes.get(row.id)
+            if (id !== null && id !== undefined && scope.has(id)) count += 1
+          }
+          if (count > 0) list.push({ id: box.id, label: box.name, count, color: boxColorValue(box.color) })
+        }
+        return list
+      }, [boxIndex, primaryBoxes, matched, t])
+
+      const boxGroups = useMemo(() => {
+        if (boxIndex === null || primaryBoxes === null) return null
+        const buckets = new Map()
+        for (const row of filteredRows) {
+          const key = primaryBoxes.get(row.id) ?? ''
+          if (!buckets.has(key)) buckets.set(key, [])
+          buckets.get(key).push(row)
+        }
+        const list = []
+        for (const box of boxIndex.ordered) {
+          const rows = buckets.get(box.id)
+          if (rows === undefined || rows.length === 0) continue
+          list.push({
+            key: box.id,
+            title: boxDisplayName(box, boxIndex, t('group.joint')),
+            color: boxColorValue(box.color),
+            rows: rows.slice().sort(comparePageRows),
+          })
+        }
+        const loose = buckets.get('')
+        if (loose !== undefined && loose.length > 0) {
+          list.push({ key: 'unassigned', title: t('group.unassigned'), color: '', rows: loose.slice().sort(comparePageRows) })
+        }
+        return list
+      }, [boxIndex, primaryBoxes, filteredRows, t])
+
       const groups = useMemo(() => {
         const doing = []
         const todo = []
         const done = []
-        for (const row of matched) {
+        for (const row of filteredRows) {
           if (row.state === 'doing') doing.push(row)
           else if (row.state === 'done') done.push(row)
           else todo.push(row)
@@ -1002,7 +1300,7 @@ window.__ModuleLoader__.load({
           || right.updatedAt - left.updatedAt)
         done.sort((left, right) => (right.doneAt || right.updatedAt) - (left.doneAt || left.updatedAt))
         return { doing, todo, done }
-      }, [matched])
+      }, [filteredRows])
 
       const patch = useCallback((sessionId, changes) => {
         void todosStore.set(sessionId, changes)
@@ -1095,33 +1393,69 @@ window.__ModuleLoader__.load({
           needle !== '' && shown === 0
             ? h('div', { className: 'st-notice' }, t('empty.search'))
             : null,
-          h(Section, {
-            kind: 'doing',
-            title: t('section.doing'),
-            count: groups.doing.length,
-            collapsed: collapsed.doing === true,
-            onToggle: () => toggleSection('doing'),
-            empty: t('empty.doing'),
-            t,
-          }, renderRows(groups.doing)),
-          h(Section, {
-            kind: 'todo',
-            title: t('section.todo'),
-            count: groups.todo.length,
-            collapsed: collapsed.todo === true,
-            onToggle: () => toggleSection('todo'),
-            empty: t('empty.todo'),
-            t,
-          }, renderRows(groups.todo)),
-          h(Section, {
-            kind: 'done',
-            title: t('section.done'),
-            count: groups.done.length,
-            collapsed: collapsed.done === true,
-            onToggle: () => toggleSection('done'),
-            empty: t('empty.done'),
-            t,
-          }, renderRows(groups.done)),
+          chips === null
+            ? null
+            : h('div', { className: 'st-chips', role: 'group' },
+              chips.map((chip) => h('button', {
+                key: chip.id,
+                type: 'button',
+                className: 'st-chip',
+                'data-active': activeChip === chip.id ? 'true' : undefined,
+                'aria-pressed': activeChip === chip.id,
+                onClick: () => setActiveChip(chip.id),
+              },
+                chip.color === '' ? null : h('span', { className: 'st-dot', style: { background: chip.color } }),
+                chip.label,
+                h('span', { className: 'st-chip-count' }, String(chip.count))))),
+          boxGroups === null
+            ? [
+              h(Section, {
+                key: 'doing',
+                kind: 'doing',
+                title: t('section.doing'),
+                count: groups.doing.length,
+                collapsed: collapsed.doing === true,
+                onToggle: () => toggleSection('doing'),
+                empty: t('empty.doing'),
+                t,
+              }, renderRows(groups.doing)),
+              h(Section, {
+                key: 'todo',
+                kind: 'todo',
+                title: t('section.todo'),
+                count: groups.todo.length,
+                collapsed: collapsed.todo === true,
+                onToggle: () => toggleSection('todo'),
+                empty: t('empty.todo'),
+                t,
+              }, renderRows(groups.todo)),
+              h(Section, {
+                key: 'done',
+                kind: 'done',
+                title: t('section.done'),
+                count: groups.done.length,
+                collapsed: collapsed.done === true,
+                onToggle: () => toggleSection('done'),
+                empty: t('empty.done'),
+                t,
+              }, renderRows(groups.done)),
+            ]
+            : boxGroups.map((group) => {
+              const open = group.rows.filter((row) => !row.done).length
+              return h(Section, {
+                key: group.key,
+                kind: 'box',
+                title: group.title,
+                color: group.color,
+                count: group.rows.length,
+                badge: String(open) + '/' + String(group.rows.length),
+                badgeTitle: t('group.badge', { open, total: group.rows.length }),
+                collapsed: boxCollapsed[group.key] === true,
+                onToggle: () => setBoxCollapsed((previous) => Object.assign({}, previous, { [group.key]: previous[group.key] !== true })),
+                empty: t('empty.todo'),
+                t,
+              }, renderRows(group.rows))
+            }),
           h('div', { className: 'st-note-line' }, t('page.live'))))
     }
 
