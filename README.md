@@ -58,6 +58,14 @@ npm run test:dom  # browser: square states, click write, page grouping
 
 The browser test runs `client.js` under a tiny hooks runtime, so it needs neither React nor jsdom.
 
+## Install from GitHub
+
+```sh
+dsh plugin --profile desktop add github:879745uhjun/dsh-session-todos
+```
+
+Reload the Web UI page after installing.
+
 ## License
 
 MIT

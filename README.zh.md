@@ -58,6 +58,14 @@ npm run test:dom  # 浏览器端：方格三态、点击写入、页面分组
 
 浏览器端测试用自带的极简 hooks 运行时直接跑 `client.js`，不依赖 React 或 jsdom。
 
+## 从 GitHub 安装
+
+```sh
+dsh plugin --profile desktop add github:879745uhjun/dsh-session-todos
+```
+
+装好后刷新 Web 页面。
+
 ## 许可
 
 MIT
