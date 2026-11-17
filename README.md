@@ -66,6 +66,28 @@ dsh plugin --profile desktop add github:879745uhjun/dsh-session-todos
 
 Reload the Web UI page after installing.
 
+## Publishing (maintainers)
+
+The normal path is a real `git push`. If it fails with `schannel: AcquireCredentialsHandle failed: SEC_E_NO_CREDENTIALS`, check whether the credential helper is empty (`git config --get credential.helper` prints nothing) — this is **not** a machine limitation:
+
+```sh
+git config --local credential.helper '!gh auth git-credential'
+git push origin main
+```
+
+Prove the remote with the API (a local `ls-remote` can be flaky, the API channel is stable):
+
+```sh
+gh api repos/879745uhjun/dsh-session-todos/git/ref/heads/main --jq '.object.sha'
+```
+
+Only when the environment genuinely cannot authenticate, fall back to the REST path (the token is read from `GITHUB_TOKEN` and never written to disk):
+
+```sh
+GITHUB_TOKEN="$(gh auth token)" REPO=879745uhjun/dsh-session-todos DIR=. \
+  COMMIT_MESSAGE="feat: …" node tools/publish.mjs
+```
+
 ## License
 
 MIT

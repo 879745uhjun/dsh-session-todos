@@ -66,6 +66,28 @@ dsh plugin --profile desktop add github:879745uhjun/dsh-session-todos
 
 装好后刷新 Web 页面。
 
+## 发布（维护者）
+
+正常路径就是真 `git push`。若 push 报 `schannel: AcquireCredentialsHandle failed: SEC_E_NO_CREDENTIALS`，先看凭据助手是不是空的（`git config --get credential.helper` 无输出即为空），这**不是机器不支持**：
+
+```sh
+git config --local credential.helper '!gh auth git-credential'
+git push origin main
+```
+
+推完用 API 自证远端（本机 `ls-remote` 偶发不稳，API 通道稳定）：
+
+```sh
+gh api repos/879745uhjun/dsh-session-todos/git/ref/heads/main --jq '.object.sha'
+```
+
+只有在当前环境确实无法认证时，才退回 REST 备用路径（token 只从 `GITHUB_TOKEN` 读，不落盘）：
+
+```sh
+GITHUB_TOKEN="$(gh auth token)" REPO=879745uhjun/dsh-session-todos DIR=. \
+  COMMIT_MESSAGE="feat: …" node tools/publish.mjs
+```
+
 ## 许可
 
 MIT
