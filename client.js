@@ -33,6 +33,9 @@ window.__ModuleLoader__.load({
     const PRIORITY_RANK = { low: 0, normal: 1, high: 2 }
     const BOXES_ENDPOINT = '/session-boxes'
     const BOX_TIMEOUT_MS = 1500
+    const SETTINGS_ENDPOINT = '/session-todos/settings'
+    const NOTIFY_ENDPOINT = '/session-notify'
+    const LINK_TIMEOUT_MS = 1500
     const STATE_RANK = { doing: 0, todo: 1, done: 2 }
     const BOX_COLORS = {
       blue: 'var(--dsw-alias-state-business-primary)',
@@ -63,6 +66,8 @@ window.__ModuleLoader__.load({
       'group.unassigned': 'Ungrouped',
       'group.joint': ' \u203a ',
       'group.badge': '{open} open of {total}',
+      'link.toggle': 'Auto-watch todos',
+      'link.hint': 'Watch a session when its todo is opened; finishing or clearing it only releases watches this plugin created.',
       'page.title': 'Todos',
       'page.subtitle': 'Every session as one task: in progress, to do, done',
       'page.search': 'Search sessions and notes',
@@ -118,6 +123,8 @@ window.__ModuleLoader__.load({
       'group.unassigned': '未分组',
       'group.joint': ' \u203a ',
       'group.badge': '未完成 {open}/{total}',
+      'link.toggle': '待办自动关注',
+      'link.hint': '勾成待办时自动关注该会话；完成或清除时只取消本插件建立的关注。',
       'page.title': '待办',
       'page.subtitle': '每个会话就是一条待办：正在做、将要做、已做完',
       'page.search': '搜索会话或备注',
@@ -218,6 +225,7 @@ window.__ModuleLoader__.load({
       '.st-btn:hover{background:var(--dsw-alias-interactive-bg-hover)}',
       '.st-btn[data-active=true]{border-color:var(--dsw-alias-state-business-primary);color:var(--dsw-alias-state-business-primary)}',
       '.st-btn:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:1px}',
+      '.st-btn[disabled]{opacity:.5;cursor:default}',
       '.st-scroll{flex:1;min-height:0;overflow:auto;padding:0 28px 36px;overscroll-behavior:contain}',
       '.st-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:10px;margin:4px 0 18px}',
       '.st-card{border:.5px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-lg,12px);',
@@ -782,6 +790,106 @@ window.__ModuleLoader__.load({
     }
 
     /* ------------------------------------------------------------------ *
+     * Optional linkage with dsh-session-notify (auto-watch)
+     * ------------------------------------------------------------------ */
+
+    function createLinkStore() {
+      let state = { status: 'idle', available: false, autoWatch: false, saving: false }
+      const listeners = new Set()
+      let inflight = null
+
+      function publish(next) {
+        state = next
+        for (const listener of listeners) listener()
+      }
+
+      async function request(url, options) {
+        const controller = typeof AbortController === 'function' ? new AbortController() : null
+        let timer = null
+        if (controller !== null) {
+          timer = setTimeout(() => {
+            try {
+              controller.abort()
+            } catch {
+              /* already aborted */
+            }
+          }, LINK_TIMEOUT_MS)
+        }
+        try {
+          const response = await fetch(url, Object.assign({ cache: 'no-store' }, options, {
+            signal: controller === null ? undefined : controller.signal,
+          }))
+          const payload = await response.json().catch(() => null)
+          if (response.ok !== true || payload === null || payload.ok !== true) return null
+          return payload
+        } catch {
+          return null
+        } finally {
+          if (timer !== null) clearTimeout(timer)
+        }
+      }
+
+      /** Probe the notify route, then read this plugin's stored preference. */
+      function refresh() {
+        if (inflight !== null) return inflight
+        inflight = (async () => {
+          try {
+            const probe = await request(NOTIFY_ENDPOINT, { headers: { accept: 'application/json' } })
+            const settings = probe === null
+              ? null
+              : await request(SETTINGS_ENDPOINT, { headers: { accept: 'application/json' } })
+            if (settings === null) {
+              publish({ status: 'ready', available: false, autoWatch: false, saving: false })
+              return
+            }
+            publish({ status: 'ready', available: true, autoWatch: settings.autoWatch === true, saving: false })
+          } finally {
+            inflight = null
+          }
+        })()
+        return inflight
+      }
+
+      async function toggle() {
+        if (state.available !== true || state.saving === true) return
+        const next = state.autoWatch !== true
+        publish(Object.assign({}, state, { autoWatch: next, saving: true }))
+        const result = await request(SETTINGS_ENDPOINT, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', accept: 'application/json' },
+          body: JSON.stringify({ on: next }),
+        })
+        if (result === null) {
+          publish(Object.assign({}, state, { autoWatch: !next, saving: false }))
+          return
+        }
+        publish({ status: 'ready', available: true, autoWatch: result.autoWatch === true, saving: false })
+      }
+
+      return {
+        getSnapshot: () => state,
+        subscribe(listener) {
+          listeners.add(listener)
+          return () => {
+            listeners.delete(listener)
+          }
+        },
+        refresh,
+        toggle,
+      }
+    }
+
+    const linkStore = createLinkStore()
+
+    function useLinkState() {
+      const state = React.useSyncExternalStore(linkStore.subscribe, linkStore.getSnapshot, linkStore.getSnapshot)
+      useEffect(() => {
+        void linkStore.refresh()
+      }, [])
+      return state
+    }
+
+    /* ------------------------------------------------------------------ *
      * Session catalog hooks
      * ------------------------------------------------------------------ */
 
@@ -1178,6 +1286,7 @@ window.__ModuleLoader__.load({
       const [showArchived, setShowArchived] = useState(false)
       const [collapsed, setCollapsed] = useState({ doing: false, todo: false, done: true })
       const boxesState = useBoxesState()
+      const linkState = useLinkState()
       const [activeChip, setActiveChip] = useState('all')
       const [boxCollapsed, setBoxCollapsed] = useState({})
 
@@ -1364,6 +1473,19 @@ window.__ModuleLoader__.load({
               'aria-label': t('page.search'),
               onChange: (event) => setQuery(event.target.value),
             }),
+            linkState.available
+              ? h('button', {
+                type: 'button',
+                className: 'st-btn',
+                'data-active': linkState.autoWatch ? 'true' : undefined,
+                'aria-pressed': linkState.autoWatch,
+                title: t('link.hint'),
+                disabled: linkState.saving === true,
+                onClick: () => {
+                  void linkStore.toggle()
+                },
+              }, t('link.toggle'))
+              : null,
             anyArchived
               ? h('button', {
                 type: 'button',

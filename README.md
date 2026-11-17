@@ -37,6 +37,17 @@ When `dsh-session-boxes` is installed, the Todo page groups by box (read-only: s
 
 **Degradation:** if the boxes route answers 404, exceeds the 1.5 s timeout, or returns unparseable JSON, the page falls back to the flat "in progress / to do / done" sections — no error, no blocking. Row checkboxes, the … menu, SSE sync, the storage format, and the `/session-todos` contract are untouched. Installing the boxes plugin later needs no restart: the page re-reads the route every time it opens.
 
+## Session notify linkage (auto-watch)
+
+When `dsh-session-notify` is installed, the Todo page header gains an **Auto-watch todos** switch (off by default; the preference lives in `~/.dsh/session-todos.json` as `autoWatch`):
+
+- with it on, opening a todo (not done) posts `POST /session-notify/watch {on:true}`, so the session pops a card when its turn finishes;
+- marking it done, or clearing the todo, releases **only the watches this plugin created** — the `autoWatched` list in the file records ownership, a watch the user set by hand is never touched;
+- turning the switch off releases every watch this plugin created;
+- requests fire only on state changes: serialized per session and idempotent, no retry storms;
+- **degradation:** a 404, a 1.5 s timeout, or an unparseable payload is skipped silently and the todo itself is still saved; without the notify plugin the switch does not render at all;
+- **no backfill:** enabling the switch does not watch existing todos, only later state changes.
+
 ## Why the square sits on the right
 
 The leading cell of a session row belongs to the app: it shows a running dot while the session works and a completion reminder once it finishes. Any control placed there disappears with those states, so the square lives in the row's trailing seat (next to the star) where it is always visible and never moves.

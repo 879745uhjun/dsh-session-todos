@@ -134,6 +134,9 @@ const clone = (value) => JSON.parse(JSON.stringify(value))
 
 // 'off' keeps every legacy test on the flat list; the box tests turn it on.
 let boxesMode = 'off'
+let notifyMode = 'ok' // 'ok' | 'off' | 'broken'
+let settings = { autoWatch: false }
+const settingsPosts = []
 
 const boxesPayload = {
   ok: true,
@@ -152,6 +155,20 @@ const boxesPayload = {
 
 const fetch = (url, init) => {
   requests.push({ url, init })
+  if (String(url).includes('/session-notify')) {
+    if (notifyMode === 'off') return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({ ok: false }) })
+    return reply({ ok: true, watching: [] })
+  }
+  if (String(url).includes('/session-todos/settings')) {
+    if (init !== undefined && init.method === 'POST') {
+      const body = JSON.parse(init.body)
+      settingsPosts.push(body)
+      settings = { autoWatch: body.on === true }
+      return reply({ ok: true, autoWatch: settings.autoWatch, autoWatched: [] })
+    }
+    if (notifyMode === 'broken') return Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({ ok: false }) })
+    return reply({ ok: true, autoWatch: settings.autoWatch, autoWatched: [] })
+  }
   if (String(url).includes('/session-boxes')) {
     if (boxesMode === 'ok') return reply(clone(boxesPayload))
     if (boxesMode === 'badjson') {
@@ -298,6 +315,9 @@ const settle = async () => {
 function boot() {
   serverTodos = clone(todos)
   boxesMode = 'off'
+  notifyMode = 'ok'
+  settings = { autoWatch: false }
+  settingsPosts.length = 0
   const locale = {
     dictionaries: {},
     register(namespace, dictionaries) {
@@ -518,6 +538,31 @@ test('a missing, broken, or aborted boxes route keeps the flat sections', async 
     assert.deepEqual(names, ['In progress', 'To do', 'Done'], 'mode ' + mode)
     assert.equal(byClass(nodes, 'st-chip').length, 0, 'mode ' + mode + ' renders no chips')
   }
+})
+
+test('the auto-watch toggle flips and posts the preference', async () => {
+  const { registrations } = boot()
+  await settle()
+  const { page, nodes } = await openPage(registrations, 'off')
+  const findToggle = (list) => byClass(list, 'st-btn').find((node) => textOf(node) === 'Auto-watch todos')
+  const toggle = findToggle(nodes)
+  assert.ok(toggle, 'the toggle renders when notify answers')
+  assert.equal(toggle.props['aria-pressed'], false)
+
+  toggle.props.onClick()
+  await settle()
+  const after = renderComponent(page, {}, true)
+  assert.equal(findToggle(after).props['aria-pressed'], true)
+  assert.deepEqual(settingsPosts, [{ on: true }])
+})
+
+test('without the notify plugin the auto-watch toggle disappears', async () => {
+  const { registrations } = boot()
+  notifyMode = 'off'
+  await settle()
+  const { nodes } = await openPage(registrations, 'off')
+  const toggles = byClass(nodes, 'st-btn').filter((node) => textOf(node) === 'Auto-watch todos')
+  assert.equal(toggles.length, 0, 'no toggle without notify')
 })
 
 test('the stylesheet is injected once and removed by its disposer', () => {

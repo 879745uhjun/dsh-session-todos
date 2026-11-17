@@ -29,8 +29,14 @@ const ROUTE = '/session-todos'
 const EVENTS_ROUTE = '/session-todos/events'
 /** SSE heartbeat interval; keeps idle proxies and sockets alive. */
 const SSE_HEARTBEAT_MS = 20_000
-/** Todo file format version. */
-const FILE_VERSION = 1
+/** Todo file format version; 2 added autoWatch and autoWatched. */
+const FILE_VERSION = 2
+/** Browser route that reads and writes the auto-watch preference. */
+const SETTINGS_ROUTE = '/session-todos/settings'
+/** dsh-session-notify's watch route; absent peers degrade silently. */
+const NOTIFY_WATCH_ROUTE = '/session-notify/watch'
+/** Watch call timeout; a slow peer must not hold the todo mutation. */
+const WATCH_TIMEOUT_MS = 1500
 /** Request-body ceiling for the browser route. */
 const MAX_BODY_BYTES = 64 * 1024
 /** Longest session id accepted (session ids are UUIDs, far shorter). */
@@ -91,6 +97,21 @@ function normalizeEntry(value) {
   const doneAt = done ? toTimestamp(value.doneAt) || updatedAt : 0
   if (!done && note === '' && priority === DEFAULT_PRIORITY && dueAt === 0) return null
   return { done, note, priority, dueAt, title, createdAt, updatedAt, doneAt }
+}
+
+/** Copy and validate the sessions this plugin watched on the user's behalf. */
+function normalizeWatchList(raw) {
+  const list = []
+  const seen = new Set()
+  if (!Array.isArray(raw)) return list
+  for (const value of raw) {
+    if (typeof value !== 'string') continue
+    const sessionId = value.trim()
+    if (sessionId === '' || sessionId.length > MAX_SESSION_ID_LENGTH || seen.has(sessionId)) continue
+    seen.add(sessionId)
+    list.push(sessionId)
+  }
+  return list
 }
 
 /** Copy and validate the stored todo map, dropping anything unexpected. */
@@ -158,9 +179,13 @@ function todoRows(todos) {
  */
 function createStore(file, log) {
   let todos = {}
+  let autoWatch = false
+  const autoWatched = new Set()
+  let origin = ''
   let loaded = null
   let writeChain = Promise.resolve()
   const listeners = new Set()
+  const watchers = new Map()
 
   function emit() {
     const snapshot = snapshotTodos(todos)
@@ -173,6 +198,10 @@ function createStore(file, log) {
     }
   }
 
+  function settingsSnapshot() {
+    return { autoWatch, autoWatched: [...autoWatched].sort() }
+  }
+
   function load() {
     if (loaded !== null) return loaded
     loaded = (async () => {
@@ -180,6 +209,8 @@ function createStore(file, log) {
         const text = await readFile(file, 'utf8')
         const parsed = JSON.parse(text)
         todos = normalizeTodos(parsed?.todos)
+        autoWatch = parsed?.autoWatch === true
+        for (const sessionId of normalizeWatchList(parsed?.autoWatched)) autoWatched.add(sessionId)
       } catch (error) {
         if (error?.code !== 'ENOENT') log('could not read ' + file, error)
       }
@@ -188,7 +219,13 @@ function createStore(file, log) {
   }
 
   function persist() {
-    const body = JSON.stringify({ version: FILE_VERSION, updatedAt: Date.now(), todos }, null, 2)
+    const body = JSON.stringify({
+      version: FILE_VERSION,
+      updatedAt: Date.now(),
+      autoWatch,
+      autoWatched: [...autoWatched].sort(),
+      todos,
+    }, null, 2)
     writeChain = writeChain
       .then(async () => {
         await mkdir(dirname(file), { recursive: true })
@@ -202,14 +239,110 @@ function createStore(file, log) {
     return writeChain
   }
 
+  /**
+   * One watch call against dsh-session-notify. Any failure — route missing,
+   * timeout, bad payload — is a silent false: the todo itself is unaffected.
+   */
+  async function postWatch(sessionId, on) {
+    if (origin === '' || typeof fetch !== 'function') return false
+    const controller = typeof AbortController === 'function' ? new AbortController() : null
+    let timer = null
+    if (controller !== null) {
+      timer = setTimeout(() => {
+        try {
+          controller.abort()
+        } catch {
+          /* already aborted */
+        }
+      }, WATCH_TIMEOUT_MS)
+    }
+    try {
+      const response = await fetch(origin + NOTIFY_WATCH_ROUTE, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json' },
+        body: JSON.stringify({ sessionId, on }),
+        signal: controller === null ? undefined : controller.signal,
+      })
+      if (response.ok !== true) return false
+      const payload = await response.json().catch(() => null)
+      return payload !== null && payload.ok === true
+    } catch {
+      return false
+    } finally {
+      if (timer !== null) clearTimeout(timer)
+    }
+  }
+
+  /** Serialize one session's watch calls so a fast toggle settles on its last state. */
+  function queueWatch(sessionId, run) {
+    const previous = watchers.get(sessionId) ?? Promise.resolve()
+    const next = previous
+      .then(run)
+      .catch((error) => log('a notify watch call failed', error))
+    watchers.set(sessionId, next)
+    next.finally(() => {
+      if (watchers.get(sessionId) === next) watchers.delete(sessionId)
+    })
+    return next
+  }
+
+  /** Watch while the todo is open; release it once done or gone. */
+  function reconcile(sessionId) {
+    if (!autoWatch) return
+    queueWatch(sessionId, async () => {
+      if (!autoWatch) return
+      const entry = todos[sessionId]
+      const shouldWatch = entry !== undefined && entry.done !== true
+      const owned = autoWatched.has(sessionId)
+      if (shouldWatch && !owned) {
+        if (await postWatch(sessionId, true)) {
+          autoWatched.add(sessionId)
+          await persist()
+        }
+      } else if (!shouldWatch && owned) {
+        if (await postWatch(sessionId, false)) {
+          autoWatched.delete(sessionId)
+          await persist()
+        }
+      }
+    })
+  }
+
+  /** Release one watch this plugin created, whatever the current toggle says. */
+  function release(sessionId) {
+    queueWatch(sessionId, async () => {
+      if (!autoWatched.has(sessionId)) return
+      if (await postWatch(sessionId, false)) {
+        autoWatched.delete(sessionId)
+        await persist()
+      }
+    })
+  }
+
   return {
     load,
     snapshot: () => snapshotTodos(todos),
+    settings: () => settingsSnapshot(),
+    /** Remember the same-origin base the notify route can be reached on. */
+    setOrigin(value) {
+      if (typeof value !== 'string' || value === '') return
+      origin = value
+    },
     subscribe(listener) {
       listeners.add(listener)
       return () => {
         listeners.delete(listener)
       }
+    },
+    /** Turn auto-watch on or off; turning it off releases every owned watch. */
+    async setAutoWatch(value) {
+      await load()
+      const next = value === true
+      if (next === autoWatch) return settingsSnapshot()
+      autoWatch = next
+      await persist()
+      if (!next) for (const sessionId of [...autoWatched]) release(sessionId)
+      return settingsSnapshot()
     },
     /** Merge one patch into a session's todo, creating or dropping it as needed. */
     async patch(sessionId, patch) {
@@ -234,6 +367,7 @@ function createStore(file, log) {
       else todos[sessionId] = entry
       await persist()
       emit()
+      reconcile(sessionId)
       return snapshotTodos(todos)
     },
     /** Forget one session's todo entirely. */
@@ -243,6 +377,7 @@ function createStore(file, log) {
       delete todos[sessionId]
       await persist()
       emit()
+      reconcile(sessionId)
       return snapshotTodos(todos)
     },
   }
@@ -355,6 +490,10 @@ function createRouteHandler(store, log) {
         sendJson(response, 403, { ok: false, error: 'cross-origin request refused' })
         return
       }
+      // Remember this origin so a todo mutation can reach the notify route on
+      // the same server, without baking a port into the plugin.
+      const host = request.headers.host
+      if (typeof host === 'string' && host !== '') store.setOrigin('http://' + host)
       if (request.method === 'GET') {
         await store.load()
         sendJson(response, 200, { ok: true, todos: store.snapshot() })
@@ -383,6 +522,50 @@ function createRouteHandler(store, log) {
       response.end(JSON.stringify({ ok: false, error: 'method not allowed' }))
     } catch (error) {
       log('request failed', error)
+      try {
+        sendJson(response, 500, { ok: false, error: 'internal error' })
+      } catch {
+        response.destroy()
+      }
+    }
+  }
+}
+
+/** Browser route for the auto-watch preference: GET reads it, POST changes it. */
+function createSettingsHandler(store, log) {
+  return async function handleSessionTodoSettings(request, response) {
+    try {
+      if (!isAcceptableOrigin(request)) {
+        sendJson(response, 403, { ok: false, error: 'cross-origin request refused' })
+        return
+      }
+      const host = request.headers.host
+      if (typeof host === 'string' && host !== '') store.setOrigin('http://' + host)
+      if (request.method === 'GET') {
+        await store.load()
+        sendJson(response, 200, Object.assign({ ok: true }, store.settings()))
+        return
+      }
+      if (request.method === 'POST') {
+        let payload
+        try {
+          payload = JSON.parse(await readBody(request, MAX_BODY_BYTES))
+        } catch (error) {
+          sendJson(response, 400, { ok: false, error: error.message === 'request body is too large' ? error.message : 'invalid JSON body' })
+          return
+        }
+        if (payload === null || typeof payload !== 'object' || typeof payload.on !== 'boolean') {
+          sendJson(response, 400, { ok: false, error: 'on must be a boolean' })
+          return
+        }
+        const settings = await store.setAutoWatch(payload.on)
+        sendJson(response, 200, Object.assign({ ok: true }, settings))
+        return
+      }
+      response.writeHead(405, { allow: 'GET, POST', 'content-type': 'application/json; charset=utf-8' })
+      response.end(JSON.stringify({ ok: false, error: 'method not allowed' }))
+    } catch (error) {
+      log('settings request failed', error)
       try {
         sendJson(response, 500, { ok: false, error: 'internal error' })
       } catch {
@@ -635,9 +818,11 @@ export function apply(ctx) {
   ctx.inject(['webServer'], (scope) => {
     scope.effect(() => {
       const removeTodos = scope.webServer.register({ kind: 'exact', path: ROUTE, handler: createRouteHandler(store, log) })
+      const removeSettings = scope.webServer.register({ kind: 'exact', path: SETTINGS_ROUTE, handler: createSettingsHandler(store, log) })
       const removeEvents = scope.webServer.register({ kind: 'exact', path: EVENTS_ROUTE, handler: events.attach })
       return () => {
         removeEvents()
+        removeSettings()
         removeTodos()
       }
     }, 'session-todos: browser routes')

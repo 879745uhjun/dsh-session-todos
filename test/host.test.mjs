@@ -166,7 +166,7 @@ test('note, priority, and due date persist to disk', async (t) => {
   assert.equal(result.todo.dueAt, Date.parse('2026-11-20'))
 
   const stored = JSON.parse(readFileSync(home.file, 'utf8'))
-  assert.equal(stored.version, 1)
+  assert.equal(stored.version, 2)
   assert.equal(stored.todos['session-b'].priority, 'high')
   assert.equal(stored.todos['session-b'].note, 'ship the plugin')
 
@@ -268,4 +268,144 @@ test('the events route is registered', (t) => {
   const home = createHome(t)
   const host = createHost(home)
   assert.equal(typeof host.routes.get('/session-todos/events'), 'function')
+})
+
+/* ------------------------------------------------------------------ *
+ * Auto-watch linkage with dsh-session-notify
+ * ------------------------------------------------------------------ */
+
+const watchCalls = []
+let watchMode = 'ok'
+
+/** Replace global fetch with a recorder for the notify watch route. */
+function installWatchStub() {
+  watchCalls.length = 0
+  watchMode = 'ok'
+  globalThis.fetch = async (url, init) => {
+    const target = String(url)
+    if (!target.includes('/session-notify/watch')) throw new Error('unexpected fetch ' + target)
+    const body = JSON.parse(init.body)
+    watchCalls.push({ url: target, body })
+    if (watchMode === '404') return { ok: false, status: 404, json: async () => ({ ok: false }) }
+    if (watchMode === 'badjson') return { ok: true, status: 200, json: async () => { throw new SyntaxError('bad json') } }
+    if (watchMode === 'abort') throw Object.assign(new Error('aborted'), { name: 'AbortError' })
+    return { ok: true, status: 200, json: async () => ({ ok: true, sessionId: body.sessionId, watching: body.on === true }) }
+  }
+}
+
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+/** The persisted ownership list, read straight from the todo file. */
+const storedWatches = (file) => JSON.parse(readFileSync(file, 'utf8')).autoWatched
+
+/** Poll until the predicate holds; the store fires watch calls in the background. */
+async function waitFor(predicate, label, timeoutMs = 1000) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (predicate()) return
+    await delay(10)
+  }
+  throw new Error('timeout waiting for ' + label)
+}
+
+test('auto-watch is off by default and watches an open todo once enabled', async (t) => {
+  const home = createHome(t)
+  installWatchStub()
+  const host = createHost(home)
+  const handler = host.routes.get('/session-todos')
+  const settings = host.routes.get('/session-todos/settings')
+  assert.equal(typeof settings, 'function', 'settings route is registered')
+
+  const before = await call(settings, 'GET')
+  assert.deepEqual(before.json, { ok: true, autoWatch: false, autoWatched: [] })
+
+  await call(handler, 'POST', { sessionId: 'session-watch', done: false, note: 'open' })
+  await delay(40)
+  assert.equal(watchCalls.length, 0, 'no watch while the toggle is off')
+
+  const enabled = await call(settings, 'POST', { on: true })
+  assert.equal(enabled.status, 200)
+  assert.equal(enabled.json.autoWatch, true)
+
+  await call(handler, 'POST', { sessionId: 'session-watch', done: false, note: 'open again' })
+  await waitFor(() => watchCalls.length === 1, 'the first watch call')
+  assert.deepEqual(watchCalls[0].body, { sessionId: 'session-watch', on: true })
+
+  // A second patch on the same open todo must not watch again.
+  await call(handler, 'POST', { sessionId: 'session-watch', done: false, note: 'third' })
+  await delay(60)
+  assert.equal(watchCalls.length, 1, 'watch is idempotent')
+
+  await waitFor(() => storedWatches(home.file).length === 1, 'ownership recorded')
+  const stored = JSON.parse(readFileSync(home.file, 'utf8'))
+  assert.deepEqual(stored.autoWatched, ['session-watch'])
+  assert.equal(stored.autoWatch, true)
+
+  // Marking it done releases the watch and the ownership record.
+  await call(handler, 'POST', { sessionId: 'session-watch', done: true })
+  await waitFor(() => watchCalls.length === 2, 'the release call')
+  assert.deepEqual(watchCalls[1].body, { sessionId: 'session-watch', on: false })
+  await waitFor(() => storedWatches(home.file).length === 0, 'ownership released')
+})
+
+test('clearing a todo releases only the watch this plugin created', async (t) => {
+  const home = createHome(t)
+  installWatchStub()
+  const host = createHost(home)
+  const handler = host.routes.get('/session-todos')
+  const settings = host.routes.get('/session-todos/settings')
+  await call(settings, 'POST', { on: true })
+  await call(handler, 'POST', { sessionId: 'session-owned', done: false, note: 'x' })
+  await waitFor(() => watchCalls.length === 1, 'watch on')
+
+  await call(handler, 'POST', { sessionId: 'session-owned', action: 'clear' })
+  await waitFor(() => watchCalls.length === 2, 'watch off')
+  assert.deepEqual(watchCalls[1].body, { sessionId: 'session-owned', on: false })
+  await waitFor(() => storedWatches(home.file).length === 0, 'ownership released')
+})
+
+test('turning auto-watch off releases the watches it created', async (t) => {
+  const home = createHome(t)
+  installWatchStub()
+  const host = createHost(home)
+  const handler = host.routes.get('/session-todos')
+  const settings = host.routes.get('/session-todos/settings')
+  await call(settings, 'POST', { on: true })
+  await call(handler, 'POST', { sessionId: 'session-off', done: false, note: 'x' })
+  await waitFor(() => watchCalls.length === 1, 'watch on')
+
+  await call(settings, 'POST', { on: false })
+  await waitFor(() => watchCalls.length === 2, 'release on disable')
+  assert.deepEqual(watchCalls[1].body, { sessionId: 'session-off', on: false })
+  await waitFor(() => storedWatches(home.file).length === 0, 'ownership released')
+})
+
+test('a missing or broken notify route never blocks the todo', async (t) => {
+  for (const mode of ['404', 'badjson', 'abort']) {
+    const home = createHome(t)
+    installWatchStub()
+    watchMode = mode
+    const host = createHost(home)
+    const handler = host.routes.get('/session-todos')
+    const settings = host.routes.get('/session-todos/settings')
+    await call(settings, 'POST', { on: true })
+
+    const saved = await call(handler, 'POST', { sessionId: 'session-degraded', done: false, note: 'still saved' })
+    assert.equal(saved.status, 200, 'mode ' + mode)
+    assert.equal(saved.json.todos['session-degraded'].note, 'still saved', 'mode ' + mode)
+    await delay(80)
+    assert.deepEqual(JSON.parse(readFileSync(home.file, 'utf8')).autoWatched, [], 'mode ' + mode + ' records no ownership')
+  }
+})
+
+test('the settings route validates its payload', async (t) => {
+  const home = createHome(t)
+  const host = createHost(home)
+  const settings = host.routes.get('/session-todos/settings')
+  const bad = await call(settings, 'POST', { on: 'yes' })
+  assert.equal(bad.status, 400)
+  const wrong = await call(settings, 'DELETE')
+  assert.equal(wrong.status, 405)
+  const crossSite = await call(settings, 'POST', { on: true }, { origin: 'https://evil.example' })
+  assert.equal(crossSite.status, 403)
 })
