@@ -2,6 +2,17 @@
 
 本文件记录 dsh-session-todos 的每次可见变化。版本号遵循语义化版本。
 
+## 0.5.0 — 2026-11-18
+
+### 新增
+
+- **行内有笔记标记**：待办页每行若该会话在 dsh-notepad 的 `listSessionNotes()` 里，就在标题右侧显示一个小笔记图标（title「有会话笔记」），点击调用 `openSessionNote(id)`；没有笔记的行不占位。
+- 只走 `window.dshNotepad` 协议（version 1），通过 `subscribe` 在笔记落盘后刷新对应行，页面卸载时取消订阅；不读它的 localStorage、不 import 它的代码。
+
+### 降级
+
+- 协议缺失、`version !== 1`、或调用抛错 → 不显示任何图标，待办功能照常，不阻塞加载。
+
 ## 0.4.0 — 2026-11-18
 
 ### 新增

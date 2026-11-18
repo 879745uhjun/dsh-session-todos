@@ -66,6 +66,7 @@ window.__ModuleLoader__.load({
       'group.unassigned': 'Ungrouped',
       'group.joint': ' \u203a ',
       'group.badge': '{open} open of {total}',
+      'noteLink.title': 'Session note',
       'link.toggle': 'Auto-watch todos',
       'link.hint': 'Watch a session when its todo is opened; finishing or clearing it only releases watches this plugin created.',
       'page.title': 'Todos',
@@ -123,6 +124,7 @@ window.__ModuleLoader__.load({
       'group.unassigned': '未分组',
       'group.joint': ' \u203a ',
       'group.badge': '未完成 {open}/{total}',
+      'noteLink.title': '有会话笔记',
       'link.toggle': '待办自动关注',
       'link.hint': '勾成待办时自动关注该会话；完成或清除时只取消本插件建立的关注。',
       'page.title': '待办',
@@ -313,6 +315,14 @@ window.__ModuleLoader__.load({
       '.st-chip[data-active=true] .st-chip-count{color:inherit}',
       '.st-dot{width:7px;height:7px;border-radius:50%;flex:none;display:inline-block}',
       '.st-section-head .st-dot{margin-left:2px}',
+      '.st-row-head{display:flex;align-items:center;gap:6px;min-width:0}',
+      '.st-row-head .st-row-title{flex:0 1 auto;min-width:0}',
+      '.st-note-link{appearance:none;border:0;background:transparent;padding:0;width:18px;height:18px;',
+      'border-radius:4px;display:inline-flex;align-items:center;justify-content:center;flex:none;',
+      'cursor:pointer;color:var(--dsw-alias-label-tertiary)}',
+      '.st-note-link:hover{background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary)}',
+      '.st-note-link:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:1px}',
+      '.st-note-link svg{width:13px;height:13px;display:block}',
       '.st-note-line{margin-top:10px;font-size:11px;color:var(--dsw-alias-label-tertiary)}',
       '@media (max-width:720px){.st-head{padding:14px 16px 10px;flex-wrap:wrap}',
       '.st-scroll{padding:0 16px 28px}.st-search{width:100%;max-width:none}',
@@ -968,6 +978,98 @@ window.__ModuleLoader__.load({
     }
 
     /* ------------------------------------------------------------------ *
+     * Optional linkage with dsh-notepad (session notes)
+     * ------------------------------------------------------------------ */
+
+    /**
+     * dsh-notepad's client protocol, when it is present and usable. Any
+     * mismatch — missing object, another version, a throwing getter — means
+     * "no notes": the todo page keeps working without icons.
+     */
+    function readNotepadProtocol() {
+      try {
+        const api = typeof window === 'undefined' ? undefined : window.dshNotepad
+        if (api === null || typeof api !== 'object') return null
+        if (api.version !== 1) return null
+        if (typeof api.listSessionNotes !== 'function') return null
+        if (typeof api.openSessionNote !== 'function') return null
+        if (typeof api.subscribe !== 'function') return null
+        return api
+      } catch {
+        return null
+      }
+    }
+
+    /** True when both sets hold the same session ids. */
+    function sameSessionSet(left, right) {
+      if (left.size !== right.size) return false
+      for (const value of left) if (!right.has(value)) return false
+      return true
+    }
+
+    /**
+     * The session ids that currently have a note. Subscribes while the page is
+     * mounted and detaches on unmount; a note landing later re-reads the list.
+     */
+    function useNotepadNotes() {
+      const [notes, setNotes] = useState(() => new Set())
+      useEffect(() => {
+        const api = readNotepadProtocol()
+        if (api === null) {
+          setNotes(new Set())
+          return undefined
+        }
+        let disposed = false
+        const read = () => {
+          if (disposed) return
+          try {
+            const list = api.listSessionNotes()
+            const next = new Set()
+            if (Array.isArray(list)) {
+              for (const item of list) {
+                if (item === null || typeof item !== 'object') continue
+                if (typeof item.sessionId === 'string' && item.sessionId !== '') next.add(item.sessionId)
+              }
+            }
+            setNotes((previous) => (sameSessionSet(previous, next) ? previous : next))
+          } catch {
+            setNotes((previous) => (previous.size === 0 ? previous : new Set()))
+          }
+        }
+        read()
+        let detach = null
+        try {
+          detach = api.subscribe(() => read())
+        } catch {
+          detach = null
+        }
+        return () => {
+          disposed = true
+          if (typeof detach !== 'function') return
+          try {
+            detach()
+          } catch {
+            /* the notepad already detached */
+          }
+        }
+      }, [])
+      return notes
+    }
+
+    /** Small document glyph for the "has a session note" marker. */
+    function NoteIcon() {
+      return h('svg', { viewBox: '0 0 16 16', fill: 'none', 'aria-hidden': 'true' },
+        h('path', {
+          d: 'M4 2.6h5.2L12 5.4v8H4z',
+          stroke: 'currentColor',
+          strokeWidth: 1.3,
+          strokeLinejoin: 'round',
+        }),
+        h('path', { d: 'M9 2.8v2.8h2.8', stroke: 'currentColor', strokeWidth: 1.2, strokeLinejoin: 'round' }),
+        h('path', { d: 'M5.9 8.2h4.2M5.9 10.6h4.2', stroke: 'currentColor', strokeWidth: 1.2, strokeLinecap: 'round' }))
+    }
+
+    /* ------------------------------------------------------------------ *
      * Icons
      * ------------------------------------------------------------------ */
 
@@ -1143,7 +1245,7 @@ window.__ModuleLoader__.load({
     }
 
     /** One session row on the page. */
-    function TodoRow({ row, t, now, onOpen, onPatch, onClear }) {
+    function TodoRow({ row, t, now, onOpen, onPatch, onClear, hasNote, onOpenNote }) {
       const [editing, setEditing] = useState(false)
       const [draft, setDraft] = useState(row.note)
 
@@ -1237,16 +1339,31 @@ window.__ModuleLoader__.load({
         onClick: () => onPatch(row.id, { done: !row.done, title: row.title }),
       }, row.done ? h(CheckIcon) : null),
       h('div', { className: 'st-row-main' },
-        h('button', {
-          type: 'button',
-          className: 'st-row-title',
-          'data-missing': row.missing ? 'true' : undefined,
-          title: row.missing ? t('row.missing') : t('row.open'),
-          onClick: () => {
-            if (!row.missing) onOpen(row.id)
-          },
-          disabled: row.missing,
-        }, row.title === '' ? t('row.untitled') : row.title),
+        h('div', { className: 'st-row-head' },
+          h('button', {
+            type: 'button',
+            className: 'st-row-title',
+            'data-missing': row.missing ? 'true' : undefined,
+            title: row.missing ? t('row.missing') : t('row.open'),
+            onClick: () => {
+              if (!row.missing) onOpen(row.id)
+            },
+            disabled: row.missing,
+          }, row.title === '' ? t('row.untitled') : row.title),
+          hasNote
+            ? h('button', {
+              type: 'button',
+              className: 'st-note-link',
+              title: t('noteLink.title'),
+              'aria-label': t('noteLink.title'),
+              onClick: (event) => {
+                event.preventDefault()
+                event.stopPropagation()
+                onOpenNote(row.id)
+              },
+              onPointerDown: (event) => event.stopPropagation(),
+            }, h(NoteIcon))
+            : null),
         meta.length === 0 ? null : h('div', { className: 'st-row-meta' }, meta),
         noteArea),
       h('div', { className: 'st-side' },
@@ -1331,6 +1448,7 @@ window.__ModuleLoader__.load({
       const [collapsed, setCollapsed] = useState({ doing: false, todo: false, done: true })
       const boxesState = useBoxesState()
       const linkState = useLinkState()
+      const notepadNotes = useNotepadNotes()
       const [activeChip, setActiveChip] = useState('all')
       const [boxCollapsed, setBoxCollapsed] = useState({})
 
@@ -1475,6 +1593,16 @@ window.__ModuleLoader__.load({
         }
       }, [ctx])
 
+      const openNote = useCallback((sessionId) => {
+        const api = readNotepadProtocol()
+        if (api === null) return
+        try {
+          api.openSessionNote(sessionId)
+        } catch (error) {
+          console.warn('[session-todos] could not open the session note:', error)
+        }
+      }, [])
+
       const toggleSection = (kind) => {
         setCollapsed((previous) => Object.assign({}, previous, { [kind]: previous[kind] !== true }))
       }
@@ -1494,6 +1622,8 @@ window.__ModuleLoader__.load({
             onOpen: openSession,
             onPatch: patch,
             onClear: clear,
+            hasNote: notepadNotes.has(row.id),
+            onOpenNote: openNote,
           })),
           list.length > visible.length
             ? h('div', { key: 'more', className: 'st-empty' }, t('page.count', { shown: visible.length, total: list.length }))

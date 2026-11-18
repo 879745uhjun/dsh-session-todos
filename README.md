@@ -56,6 +56,15 @@ When a session transitions from idle to working, its done todo is unchecked auto
 - the write goes through the normal `/session-todos` route, so every other window follows over SSE, and with auto-watch enabled the session is watched again;
 - sessions without a todo, or with an open todo, are left alone.
 
+## dsh-notepad linkage (inline note marker)
+
+When dsh-notepad (4.4.0+) is installed, every todo whose session already has a note shows a small document icon next to its title; clicking it opens that note:
+
+- only the public client protocol `window.dshNotepad` (`version: 1`) is used: `listSessionNotes()`, `openSessionNote(id)`, `subscribe()`; its localStorage is never read and its code is never imported;
+- **rows without a note take no space** and show no icon;
+- when a note lands, the `subscribe` callback re-reads the list so the row's marker refreshes; the subscription is detached when the page unmounts;
+- **degradation:** a missing `window.dshNotepad`, `version !== 1`, or any throwing call means no icons at all — todos keep working and loading is never blocked.
+
 ## Why the square sits on the right
 
 The leading cell of a session row belongs to the app: it shows a running dot while the session works and a completion reminder once it finishes. Any control placed there disappears with those states, so the square lives in the row's trailing seat (next to the star) where it is always visible and never moves.

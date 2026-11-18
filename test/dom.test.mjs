@@ -268,6 +268,14 @@ const sandbox = {
 sandbox.window.EventSource = StubEventSource
 vm.runInNewContext(SOURCE, sandbox, { filename: 'client.js' })
 
+// The client reads window.dshNotepad at call time, so tests can swap it.
+const harnessWindow = sandbox.window
+
+/** Install (or clear) a fake dsh-notepad client protocol. */
+function setNotepad(api) {
+  harnessWindow.dshNotepad = api
+}
+
 const plugin = captured.factory(() => React)
 
 /* ------------------------------------------------------------------ *
@@ -286,11 +294,24 @@ function renderComponent(type, props, keepState = false) {
   collect(tree, collected)
   const effects = pendingEffects
   pendingEffects = []
+  lastCleanups = []
   for (const effect of effects) {
     const cleanup = effect()
-    if (typeof cleanup === 'function') pendingEffects.push(cleanup)
+    if (typeof cleanup === 'function') {
+      pendingEffects.push(cleanup)
+      lastCleanups.push(cleanup)
+    }
   }
   return collected
+}
+
+let lastCleanups = []
+
+/** Run the cleanups of the last render, like unmounting the component. */
+function unmount() {
+  const cleanups = lastCleanups
+  lastCleanups = []
+  for (const cleanup of cleanups) cleanup()
 }
 
 function collect(node, out) {
@@ -499,7 +520,9 @@ async function openPage(registrations, mode) {
   const page = registrations.find((entry) => (entry.definition?.name ?? '') === 'main').component
   renderComponent(page, {})
   await settle()
-  return { page, nodes: renderComponent(page, {}) }
+  // Keep the hook state the mount effects wrote (notes list, filters) and just
+  // re-read the tree; a fresh render would reset it before the effects run.
+  return { page, nodes: renderComponent(page, {}, true) }
 }
 
 test('the page groups todos by session boxes and names child boxes', async () => {
@@ -622,6 +645,105 @@ test('a session already running when the window opened keeps its done todo', asy
     assert.equal(requests.filter((request) => request.init?.method === 'POST').length, 0)
   } finally {
     doneSession.running = false
+  }
+})
+
+/** A fake dsh-notepad client protocol with the three calls the page uses. */
+function createNotepad(notes) {
+  const listeners = new Set()
+  const state = { notes: notes.slice(), opened: [] }
+  return {
+    version: 1,
+    state,
+    listSessionNotes: () => state.notes.map((sessionId) => ({ sessionId, updatedAt: 1, preview: 'note body' })),
+    openSessionNote: (sessionId) => {
+      state.opened.push(sessionId)
+    },
+    subscribe: (listener) => {
+      listeners.add(listener)
+      return () => listeners.delete(listener)
+    },
+    emit: (sessionId) => {
+      for (const listener of [...listeners]) listener(sessionId)
+    },
+    listenerCount: () => listeners.size,
+  }
+}
+
+test('rows with a session note show the marker and open that note', async () => {
+  // 'session-idle' sits in the visible To do section; Done starts collapsed.
+  const api = createNotepad(['session-idle'])
+  setNotepad(api)
+  try {
+    const { registrations } = boot()
+    await settle()
+    const { nodes } = await openPage(registrations, 'off')
+    const links = byClass(nodes, 'st-note-link')
+    assert.equal(links.length, 1, 'only the noted session has a marker')
+    links[0].props.onClick({ preventDefault() {}, stopPropagation() {} })
+    assert.deepEqual(api.state.opened, ['session-idle'])
+  } finally {
+    setNotepad(undefined)
+  }
+})
+
+test('a note saved later refreshes its row through subscribe', async () => {
+  const api = createNotepad([])
+  setNotepad(api)
+  try {
+    const { registrations } = boot()
+    await settle()
+    const { page, nodes } = await openPage(registrations, 'off')
+    assert.equal(byClass(nodes, 'st-note-link').length, 0)
+
+    api.state.notes.push('session-idle')
+    api.emit('session-idle')
+    await settle()
+    const after = renderComponent(page, {}, true)
+    assert.equal(byClass(after, 'st-note-link').length, 1)
+  } finally {
+    setNotepad(undefined)
+  }
+})
+
+test('unmounting the page detaches from notepad', async () => {
+  const api = createNotepad([])
+  setNotepad(api)
+  try {
+    const { registrations } = boot()
+    await settle()
+    const page = registrations.find((entry) => (entry.definition?.name ?? '') === 'main').component
+    renderComponent(page, {})
+    assert.equal(api.listenerCount(), 1)
+    unmount()
+    assert.equal(api.listenerCount(), 0)
+  } finally {
+    setNotepad(undefined)
+  }
+})
+
+test('a missing or mismatched notepad protocol shows no markers', async () => {
+  const broken = {
+    version: 1,
+    listSessionNotes() {
+      throw new Error('boom')
+    },
+    openSessionNote() {},
+    subscribe() {
+      return () => {}
+    },
+  }
+  try {
+    for (const api of [undefined, { version: 2 }, broken]) {
+      setNotepad(api)
+      const { registrations } = boot()
+      await settle()
+      const { nodes } = await openPage(registrations, 'off')
+      assert.equal(byClass(nodes, 'st-note-link').length, 0)
+      assert.ok(byClass(nodes, 'st-row').length > 0, 'rows still render')
+    }
+  } finally {
+    setNotepad(undefined)
   }
 })
 
