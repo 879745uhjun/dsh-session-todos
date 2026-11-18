@@ -24,7 +24,9 @@ A todo checkbox on every session row in the DeepSeek Harness sidebar, plus a ded
 - **In progress** — not checked, and the session is running right now (automatic).
 - **To do** — everything else.
 
-An explicit check wins: a session that runs again after being marked done stays in Done until you uncheck it.
+**What happens after you check it:** while the session is idle the todo stays Done; the moment that session **starts working again** (a running transition from false to true, with the window open) it unchecks itself and returns to To do.
+
+That automatic reopen does **not** look back: a session that is already running when the window opens is left alone, and neither existing done items nor history are rewritten. If you check it again, it stays Done until that session resumes once more.
 
 ## Session boxes integration
 
