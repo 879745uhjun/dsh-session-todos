@@ -881,6 +881,50 @@ window.__ModuleLoader__.load({
 
     const linkStore = createLinkStore()
 
+    /**
+     * A session that starts working again reopens its done todo. The catalog is
+     * the source of truth for "working", and only a false -> true transition
+     * counts: a session that is already running when the window opens keeps the
+     * state the user left it in.
+     */
+    function watchRunningSessions(ctx) {
+      const list = sessionCatalog(ctx)
+      if (list === undefined || typeof list.subscribe !== 'function') return undefined
+      const running = new Map()
+      let seeded = false
+      let stopped = false
+
+      const read = () => {
+        if (stopped) return
+        const snapshot = catalogSnapshot(list)
+        const current = new Map()
+        for (const sessionId of snapshot.ids) {
+          const summary = snapshot.byId[sessionId]
+          if (summary === undefined || summary === null) continue
+          const isRunning = summary.running === true
+          current.set(sessionId, isRunning)
+          if (!seeded || !isRunning) continue
+          if (!running.has(sessionId) || running.get(sessionId) === true) continue
+          const entry = todosStore.getSnapshot().todos[sessionId]
+          if (entry === undefined || entry.done !== true) continue
+          void todosStore.set(sessionId, { done: false, title: titleOf(ctx, sessionId) })
+        }
+        for (const [sessionId, isRunning] of current) running.set(sessionId, isRunning)
+        for (const sessionId of [...running.keys()]) {
+          if (!current.has(sessionId)) running.delete(sessionId)
+        }
+        seeded = true
+      }
+
+      read()
+      const off = list.subscribe(read)
+      const stop = typeof off === 'function' ? off : () => {}
+      return () => {
+        stopped = true
+        stop()
+      }
+    }
+
     function useLinkState() {
       const state = React.useSyncExternalStore(linkStore.subscribe, linkStore.getSnapshot, linkStore.getSnapshot)
       useEffect(() => {
@@ -1639,6 +1683,9 @@ window.__ModuleLoader__.load({
             source.close()
           }
         }, 'session-todos: live sync')
+
+        // Reopen a done todo when its session starts working again.
+        ctx.effect(() => watchRunningSessions(ctx), 'session-todos: reopen on resume')
 
         const Box = (props) => h(SessionTodoBox, Object.assign({}, props, { ctx }))
         const MenuItem = (props) => h(SessionTodoMenuItem, Object.assign({}, props, { ctx }))

@@ -217,10 +217,13 @@ function createSessionsService(list) {
   const byId = {}
   const ids = []
   for (const session of list) {
-    byId[session.id] = session
+    byId[session.id] = Object.assign({}, session)
     ids.push(session.id)
   }
   const listeners = new Set()
+  const emit = () => {
+    for (const listener of listeners) listener()
+  }
   return {
     list: {
       getSnapshot: () => ({ ids, byId }),
@@ -229,6 +232,14 @@ function createSessionsService(list) {
         return () => listeners.delete(listener)
       },
     },
+    /** Flip one session's running state and notify, like the real catalog does. */
+    setRunning(sessionId, value) {
+      const summary = byId[sessionId]
+      if (summary === undefined) return
+      summary.running = value === true
+      emit()
+    },
+    emit,
   }
 }
 
@@ -318,6 +329,7 @@ function boot() {
   notifyMode = 'ok'
   settings = { autoWatch: false }
   settingsPosts.length = 0
+  const sessionsService = createSessionsService(sessions)
   const locale = {
     dictionaries: {},
     register(namespace, dictionaries) {
@@ -353,13 +365,13 @@ function boot() {
       },
     },
     get(name) {
-      if (name === 'sessions') return createSessionsService(sessions)
+      if (name === 'sessions') return sessionsService
       if (name === 'locale') return locale
       return undefined
     },
   }
   plugin.apply(ctx)
-  return { registrations, locale }
+  return { registrations, locale, sessions: sessionsService }
 }
 
 test('registers the row checkbox, the page, and the sidebar entry', () => {
@@ -563,6 +575,54 @@ test('without the notify plugin the auto-watch toggle disappears', async () => {
   const { nodes } = await openPage(registrations, 'off')
   const toggles = byClass(nodes, 'st-btn').filter((node) => textOf(node) === 'Auto-watch todos')
   assert.equal(toggles.length, 0, 'no toggle without notify')
+})
+
+test('a session that starts working again reopens its done todo', async () => {
+  const { sessions: service } = boot()
+  await settle()
+  requests.length = 0
+  service.setRunning('session-done', true)
+  await settle()
+  const posts = requests.filter((request) => request.init?.method === 'POST')
+  assert.equal(posts.length, 1, 'exactly one reopen write')
+  assert.deepEqual(JSON.parse(posts[0].init.body), {
+    sessionId: 'session-done',
+    action: 'set',
+    done: false,
+    title: 'Done session',
+  })
+})
+
+test('reopening skips sessions without a done todo and never repeats', async () => {
+  const { sessions: service } = boot()
+  await settle()
+  requests.length = 0
+  service.setRunning('session-idle', true) // no todo entry at all
+  await settle()
+  assert.equal(requests.filter((request) => request.init?.method === 'POST').length, 0)
+
+  service.setRunning('session-done', true)
+  await settle()
+  assert.equal(requests.filter((request) => request.init?.method === 'POST').length, 1)
+
+  service.emit() // no transition, so no second write
+  await settle()
+  assert.equal(requests.filter((request) => request.init?.method === 'POST').length, 1)
+})
+
+test('a session already running when the window opened keeps its done todo', async () => {
+  const doneSession = sessions.find((session) => session.id === 'session-done')
+  doneSession.running = true
+  try {
+    const { sessions: service } = boot()
+    await settle()
+    requests.length = 0
+    service.emit()
+    await settle()
+    assert.equal(requests.filter((request) => request.init?.method === 'POST').length, 0)
+  } finally {
+    doneSession.running = false
+  }
 })
 
 test('the stylesheet is injected once and removed by its disposer', () => {

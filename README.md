@@ -48,6 +48,14 @@ When `dsh-session-notify` is installed, the Todo page header gains an **Auto-wat
 - **degradation:** a 404, a 1.5 s timeout, or an unparseable payload is skipped silently and the todo itself is still saved; without the notify plugin the switch does not render at all;
 - **no backfill:** enabling the switch does not watch existing todos, only later state changes.
 
+## Reopen a done todo when its session runs again
+
+When a session transitions from idle to working, its done todo is unchecked automatically so the list matches reality:
+
+- the client watches the session catalog and only a **false → true** transition counts, so a session that is already running when the window opens keeps the state you left it in;
+- the write goes through the normal `/session-todos` route, so every other window follows over SSE, and with auto-watch enabled the session is watched again;
+- sessions without a todo, or with an open todo, are left alone.
+
 ## Why the square sits on the right
 
 The leading cell of a session row belongs to the app: it shows a running dot while the session works and a completion reminder once it finishes. Any control placed there disappears with those states, so the square lives in the row's trailing seat (next to the star) where it is always visible and never moves.
