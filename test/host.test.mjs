@@ -317,7 +317,7 @@ test('auto-watch is off by default and watches an open todo once enabled', async
   assert.equal(typeof settings, 'function', 'settings route is registered')
 
   const before = await call(settings, 'GET')
-  assert.deepEqual(before.json, { ok: true, autoWatch: false, autoWatched: [] })
+  assert.deepEqual(before.json, { ok: true, autoWatch: false, reopenOnResume: false, autoWatched: [] })
 
   await call(handler, 'POST', { sessionId: 'session-watch', done: false, note: 'open' })
   await delay(40)
@@ -396,6 +396,46 @@ test('a missing or broken notify route never blocks the todo', async (t) => {
     await delay(80)
     assert.deepEqual(JSON.parse(readFileSync(home.file, 'utf8')).autoWatched, [], 'mode ' + mode + ' records no ownership')
   }
+})
+
+test('the reopen preference persists and validates', async (t) => {
+  const home = createHome(t)
+  const host = createHost(home)
+  const settings = host.routes.get('/session-todos/settings')
+
+  const saved = await call(settings, 'POST', { reopenOnResume: true })
+  assert.equal(saved.status, 200)
+  assert.equal(saved.json.reopenOnResume, true)
+  assert.equal(saved.json.autoWatch, false)
+
+  const read = await call(settings, 'GET')
+  assert.equal(read.json.reopenOnResume, true)
+  assert.equal(JSON.parse(readFileSync(home.file, 'utf8')).reopenOnResume, true)
+
+  const both = await call(settings, 'POST', { autoWatch: true, reopenOnResume: false })
+  assert.equal(both.json.autoWatch, true)
+  assert.equal(both.json.reopenOnResume, false)
+
+  assert.equal((await call(settings, 'POST', { reopenOnResume: 'yes' })).status, 400)
+  assert.equal((await call(settings, 'POST', {})).status, 400)
+})
+
+test('with auto-watch on, reopening a done todo watches the session', async (t) => {
+  const home = createHome(t)
+  installWatchStub()
+  const host = createHost(home)
+  const handler = host.routes.get('/session-todos')
+  const settings = host.routes.get('/session-todos/settings')
+  await call(settings, 'POST', { autoWatch: true, reopenOnResume: true })
+
+  await call(handler, 'POST', { sessionId: 'session-reopen', done: true })
+  await delay(40)
+  const before = watchCalls.length
+
+  // This is exactly what the client writes when a session resumes.
+  await call(handler, 'POST', { sessionId: 'session-reopen', done: false })
+  await waitFor(() => watchCalls.length === before + 1, 'the reopen watch')
+  assert.deepEqual(watchCalls[before].body, { sessionId: 'session-reopen', on: true })
 })
 
 test('the settings route validates its payload', async (t) => {

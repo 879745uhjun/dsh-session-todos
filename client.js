@@ -69,6 +69,9 @@ window.__ModuleLoader__.load({
       'noteLink.title': 'Session note',
       'link.toggle': 'Auto-watch todos',
       'link.hint': 'Watch a session when its todo is opened; finishing or clearing it only releases watches this plugin created.',
+      'reopen.toggle': 'Reopen on resume',
+      'reopen.hint': 'When on, a checked todo is unchecked the moment its session starts working again. With auto-watch on, that reopen watches the session again.',
+      'reopen.note': 'Reopen on resume is on: checked todos are reset to to-do when their session starts working again, which also re-watches those sessions while auto-watch is enabled.',
       'page.title': 'Todos',
       'page.subtitle': 'Every session as one task: in progress, to do, done',
       'page.search': 'Search sessions and notes',
@@ -127,6 +130,9 @@ window.__ModuleLoader__.load({
       'noteLink.title': '有会话笔记',
       'link.toggle': '待办自动关注',
       'link.hint': '勾成待办时自动关注该会话；完成或清除时只取消本插件建立的关注。',
+      'reopen.toggle': '会话重新开工时取消完成',
+      'reopen.hint': '开启后，已勾选的待办会在该会话重新开工时自动取消；若同时开着「待办自动关注」，还会重新触发一次关注。',
+      'reopen.note': '已开启「会话重新开工时取消完成」：勾选的待办会在会话重新开工时重置为待办，并因此重新触发自动关注。',
       'page.title': '待办',
       'page.subtitle': '每个会话就是一条待办：正在做、将要做、已做完',
       'page.search': '搜索会话或备注',
@@ -228,6 +234,8 @@ window.__ModuleLoader__.load({
       '.st-btn[data-active=true]{border-color:var(--dsw-alias-state-business-primary);color:var(--dsw-alias-state-business-primary)}',
       '.st-btn:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:1px}',
       '.st-btn[disabled]{opacity:.5;cursor:default}',
+      '.st-link-note{margin:0 0 12px;padding:8px 10px;border-radius:var(--dsw-radius-md,8px);',
+      'background:var(--dsw-alias-bg-layer-2);font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}',
       '.st-scroll{flex:1;min-height:0;overflow:auto;padding:0 28px 36px;overscroll-behavior:contain}',
       '.st-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:10px;margin:4px 0 18px}',
       '.st-card{border:.5px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-lg,12px);',
@@ -804,7 +812,14 @@ window.__ModuleLoader__.load({
      * ------------------------------------------------------------------ */
 
     function createLinkStore() {
-      let state = { status: 'idle', available: false, autoWatch: false, saving: false }
+      let state = {
+        status: 'idle',
+        settingsAvailable: false,
+        notifyAvailable: false,
+        autoWatch: false,
+        reopenOnResume: false,
+        saving: null,
+      }
       const listeners = new Set()
       let inflight = null
 
@@ -839,20 +854,32 @@ window.__ModuleLoader__.load({
         }
       }
 
-      /** Probe the notify route, then read this plugin's stored preference. */
+      /** Read the stored preferences, then probe the optional notify route. */
       function refresh() {
         if (inflight !== null) return inflight
         inflight = (async () => {
           try {
-            const probe = await request(NOTIFY_ENDPOINT, { headers: { accept: 'application/json' } })
-            const settings = probe === null
-              ? null
-              : await request(SETTINGS_ENDPOINT, { headers: { accept: 'application/json' } })
+            const settings = await request(SETTINGS_ENDPOINT, { headers: { accept: 'application/json' } })
             if (settings === null) {
-              publish({ status: 'ready', available: false, autoWatch: false, saving: false })
+              publish({
+                status: 'ready',
+                settingsAvailable: false,
+                notifyAvailable: false,
+                autoWatch: false,
+                reopenOnResume: false,
+                saving: null,
+              })
               return
             }
-            publish({ status: 'ready', available: true, autoWatch: settings.autoWatch === true, saving: false })
+            const probe = await request(NOTIFY_ENDPOINT, { headers: { accept: 'application/json' } })
+            publish({
+              status: 'ready',
+              settingsAvailable: true,
+              notifyAvailable: probe !== null,
+              autoWatch: settings.autoWatch === true,
+              reopenOnResume: settings.reopenOnResume === true,
+              saving: null,
+            })
           } finally {
             inflight = null
           }
@@ -860,20 +887,38 @@ window.__ModuleLoader__.load({
         return inflight
       }
 
-      async function toggle() {
-        if (state.available !== true || state.saving === true) return
-        const next = state.autoWatch !== true
-        publish(Object.assign({}, state, { autoWatch: next, saving: true }))
+      async function write(patch, saving) {
+        if (state.settingsAvailable !== true || state.saving !== null) return
+        const previous = state
+        const optimistic = Object.assign({}, state, { saving })
+        if (patch.autoWatch !== undefined) optimistic.autoWatch = patch.autoWatch
+        if (patch.reopenOnResume !== undefined) optimistic.reopenOnResume = patch.reopenOnResume
+        publish(optimistic)
         const result = await request(SETTINGS_ENDPOINT, {
           method: 'POST',
           headers: { 'content-type': 'application/json', accept: 'application/json' },
-          body: JSON.stringify({ on: next }),
+          body: JSON.stringify(patch),
         })
         if (result === null) {
-          publish(Object.assign({}, state, { autoWatch: !next, saving: false }))
+          publish(previous)
           return
         }
-        publish({ status: 'ready', available: true, autoWatch: result.autoWatch === true, saving: false })
+        publish({
+          status: 'ready',
+          settingsAvailable: true,
+          notifyAvailable: state.notifyAvailable,
+          autoWatch: result.autoWatch === true,
+          reopenOnResume: result.reopenOnResume === true,
+          saving: null,
+        })
+      }
+
+      function toggleAutoWatch() {
+        return write({ autoWatch: state.autoWatch !== true }, 'autoWatch')
+      }
+
+      function toggleReopen() {
+        return write({ reopenOnResume: state.reopenOnResume !== true }, 'reopenOnResume')
       }
 
       return {
@@ -885,7 +930,8 @@ window.__ModuleLoader__.load({
           }
         },
         refresh,
-        toggle,
+        toggleAutoWatch,
+        toggleReopen,
       }
     }
 
@@ -1647,18 +1693,31 @@ window.__ModuleLoader__.load({
               'aria-label': t('page.search'),
               onChange: (event) => setQuery(event.target.value),
             }),
-            linkState.available
+            linkState.settingsAvailable && linkState.notifyAvailable
               ? h('button', {
                 type: 'button',
                 className: 'st-btn',
                 'data-active': linkState.autoWatch ? 'true' : undefined,
                 'aria-pressed': linkState.autoWatch,
                 title: t('link.hint'),
-                disabled: linkState.saving === true,
+                disabled: linkState.saving === 'autoWatch',
                 onClick: () => {
-                  void linkStore.toggle()
+                  void linkStore.toggleAutoWatch()
                 },
               }, t('link.toggle'))
+              : null,
+            linkState.settingsAvailable
+              ? h('button', {
+                type: 'button',
+                className: 'st-btn',
+                'data-active': linkState.reopenOnResume ? 'true' : undefined,
+                'aria-pressed': linkState.reopenOnResume,
+                title: t('reopen.hint'),
+                disabled: linkState.saving === 'reopenOnResume',
+                onClick: () => {
+                  void linkStore.toggleReopen()
+                },
+              }, t('reopen.toggle'))
               : null,
             anyArchived
               ? h('button', {
@@ -1672,6 +1731,9 @@ window.__ModuleLoader__.load({
         h('div', { className: 'st-scroll' },
           todosState.status === 'error'
             ? h('div', { className: 'st-notice' }, t('error.load'))
+            : null,
+          linkState.reopenOnResume
+            ? h('div', { className: 'st-link-note' }, t('reopen.note'))
             : null,
           h('div', { className: 'st-summary' },
             h('div', { className: 'st-card' },
@@ -1814,8 +1876,28 @@ window.__ModuleLoader__.load({
           }
         }, 'session-todos: live sync')
 
-        // Reopen a done todo when its session starts working again.
-        ctx.effect(() => watchRunningSessions(ctx), 'session-todos: reopen on resume')
+        // Only register the resume watcher while the preference is on; toggling
+        // it from the Todo page takes effect immediately, and off means off.
+        ctx.effect(() => {
+          let dispose = null
+          const sync = () => {
+            const wanted = linkStore.getSnapshot().reopenOnResume === true
+            if (wanted && dispose === null) {
+              dispose = watchRunningSessions(ctx) ?? null
+            } else if (!wanted && dispose !== null) {
+              dispose()
+              dispose = null
+            }
+          }
+          sync()
+          const off = linkStore.subscribe(sync)
+          // The watcher needs the stored preference even while the page is closed.
+          void linkStore.refresh()
+          return () => {
+            off()
+            if (typeof dispose === 'function') dispose()
+          }
+        }, 'session-todos: reopen on resume')
 
         const Box = (props) => h(SessionTodoBox, Object.assign({}, props, { ctx }))
         const MenuItem = (props) => h(SessionTodoMenuItem, Object.assign({}, props, { ctx }))

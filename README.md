@@ -24,9 +24,9 @@ A todo checkbox on every session row in the DeepSeek Harness sidebar, plus a ded
 - **In progress** — not checked, and the session is running right now (automatic).
 - **To do** — everything else.
 
-**What happens after you check it:** while the session is idle the todo stays Done; the moment that session **starts working again** (a running transition from false to true, with the window open) it unchecks itself and returns to To do.
+**What happens after you check it:** by default an **explicit check wins** — a session starting work again does not change your choice. With **Reopen on resume** enabled, the moment that session **starts working again** (a running transition from false to true, with the window open) it unchecks itself and returns to To do.
 
-That automatic reopen does **not** look back: a session that is already running when the window opens is left alone, and neither existing done items nor history are rewritten. If you check it again, it stays Done until that session resumes once more.
+The switch is **off by default** and never looks back: a session that is already running when the window opens is left alone, and neither existing done items nor history are rewritten. If you check it again, it stays Done until that session resumes once more.
 
 ## Session boxes integration
 
@@ -51,6 +51,8 @@ When `dsh-session-notify` is installed, the Todo page header gains an **Auto-wat
 - **no backfill:** enabling the switch does not watch existing todos, only later state changes.
 
 ## Reopen a done todo when its session runs again
+
+**Off by default** — enable it from the Todo page header.
 
 When a session transitions from idle to working, its done todo is unchecked automatically so the list matches reality:
 

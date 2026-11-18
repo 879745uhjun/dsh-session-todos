@@ -135,7 +135,8 @@ const clone = (value) => JSON.parse(JSON.stringify(value))
 // 'off' keeps every legacy test on the flat list; the box tests turn it on.
 let boxesMode = 'off'
 let notifyMode = 'ok' // 'ok' | 'off' | 'broken'
-let settings = { autoWatch: false }
+let settings = { autoWatch: false, reopenOnResume: false }
+let settingsWriteFails = false
 const settingsPosts = []
 
 const boxesPayload = {
@@ -163,11 +164,13 @@ const fetch = (url, init) => {
     if (init !== undefined && init.method === 'POST') {
       const body = JSON.parse(init.body)
       settingsPosts.push(body)
-      settings = { autoWatch: body.on === true }
-      return reply({ ok: true, autoWatch: settings.autoWatch, autoWatched: [] })
+      if (settingsWriteFails) return Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({ ok: false }) })
+      if (body.autoWatch !== undefined) settings.autoWatch = body.autoWatch === true
+      if (body.reopenOnResume !== undefined) settings.reopenOnResume = body.reopenOnResume === true
+      return reply({ ok: true, autoWatch: settings.autoWatch, reopenOnResume: settings.reopenOnResume, autoWatched: [] })
     }
     if (notifyMode === 'broken') return Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({ ok: false }) })
-    return reply({ ok: true, autoWatch: settings.autoWatch, autoWatched: [] })
+    return reply({ ok: true, autoWatch: settings.autoWatch, reopenOnResume: settings.reopenOnResume, autoWatched: [] })
   }
   if (String(url).includes('/session-boxes')) {
     if (boxesMode === 'ok') return reply(clone(boxesPayload))
@@ -337,19 +340,22 @@ function byClass(nodes, className) {
 
 /** Wait for the Host route's microtasks to settle. */
 const settle = async () => {
-  for (let index = 0; index < 6; index += 1) await Promise.resolve()
+  // The settings refresh chains two background requests; 6 turns was not
+  // always enough for it to publish before a test triggers a catalog change.
+  for (let index = 0; index < 24; index += 1) await Promise.resolve()
 }
 
 /* ------------------------------------------------------------------ *
  * Tests
  * ------------------------------------------------------------------ */
 
-function boot() {
+function boot(overrides = {}) {
   serverTodos = clone(todos)
   boxesMode = 'off'
   notifyMode = 'ok'
-  settings = { autoWatch: false }
+  settings = Object.assign({ autoWatch: false, reopenOnResume: false }, overrides)
   settingsPosts.length = 0
+  settingsWriteFails = false
   const sessionsService = createSessionsService(sessions)
   const locale = {
     dictionaries: {},
@@ -588,7 +594,33 @@ test('the auto-watch toggle flips and posts the preference', async () => {
   await settle()
   const after = renderComponent(page, {}, true)
   assert.equal(findToggle(after).props['aria-pressed'], true)
-  assert.deepEqual(settingsPosts, [{ on: true }])
+  assert.deepEqual(settingsPosts, [{ autoWatch: true }])
+})
+
+test('reopen is off by default: a resume leaves a done todo alone', async () => {
+  const { sessions: service } = boot()
+  await settle()
+  requests.length = 0
+  service.setRunning('session-done', true)
+  await settle()
+  assert.equal(requests.filter((request) => request.init?.method === 'POST').length, 0)
+})
+
+test('the reopen switch posts its preference and flips', async () => {
+  const { registrations } = boot()
+  await settle()
+  const { page, nodes } = await openPage(registrations, 'off')
+  const findToggle = (list) => byClass(list, 'st-btn').find((node) => textOf(node) === 'Reopen on resume')
+  const toggle = findToggle(nodes)
+  assert.ok(toggle, 'the reopen switch renders')
+  assert.equal(toggle.props['aria-pressed'], false)
+
+  toggle.props.onClick()
+  await settle()
+  const after = renderComponent(page, {}, true)
+  assert.equal(findToggle(after).props['aria-pressed'], true)
+  assert.deepEqual(settingsPosts, [{ reopenOnResume: true }])
+  assert.deepEqual(byClass(after, 'st-link-note').length, 1, 'the cost note appears once enabled')
 })
 
 test('without the notify plugin the auto-watch toggle disappears', async () => {
@@ -601,7 +633,7 @@ test('without the notify plugin the auto-watch toggle disappears', async () => {
 })
 
 test('a session that starts working again reopens its done todo', async () => {
-  const { sessions: service } = boot()
+  const { sessions: service } = boot({ reopenOnResume: true })
   await settle()
   requests.length = 0
   service.setRunning('session-done', true)
@@ -617,7 +649,7 @@ test('a session that starts working again reopens its done todo', async () => {
 })
 
 test('reopening skips sessions without a done todo and never repeats', async () => {
-  const { sessions: service } = boot()
+  const { sessions: service } = boot({ reopenOnResume: true })
   await settle()
   requests.length = 0
   service.setRunning('session-idle', true) // no todo entry at all
@@ -637,7 +669,7 @@ test('a session already running when the window opened keeps its done todo', asy
   const doneSession = sessions.find((session) => session.id === 'session-done')
   doneSession.running = true
   try {
-    const { sessions: service } = boot()
+    const { sessions: service } = boot({ reopenOnResume: true })
     await settle()
     requests.length = 0
     service.emit()
@@ -800,6 +832,20 @@ test('a missing or mismatched notepad protocol shows no markers', async () => {
   } finally {
     setNotepad(undefined)
   }
+})
+
+test('a failed settings write reverts the reopen switch', async () => {
+  const { registrations } = boot()
+  await settle()
+  const { page, nodes } = await openPage(registrations, 'off')
+  const findToggle = (list) => byClass(list, 'st-btn').find((node) => textOf(node) === 'Reopen on resume')
+
+  settingsWriteFails = true
+  findToggle(nodes).props.onClick()
+  await settle()
+  const after = renderComponent(page, {}, true)
+  assert.equal(findToggle(after).props['aria-pressed'], false, 'the optimistic flip is rolled back')
+  assert.equal(byClass(after, 'st-link-note').length, 0, 'no cost note while it is off')
 })
 
 test('the stylesheet is injected once and removed by its disposer', () => {

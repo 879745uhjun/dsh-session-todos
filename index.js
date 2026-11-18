@@ -180,6 +180,7 @@ function todoRows(todos) {
 function createStore(file, log) {
   let todos = {}
   let autoWatch = false
+  let reopenOnResume = false
   const autoWatched = new Set()
   let origin = ''
   let loaded = null
@@ -199,7 +200,7 @@ function createStore(file, log) {
   }
 
   function settingsSnapshot() {
-    return { autoWatch, autoWatched: [...autoWatched].sort() }
+    return { autoWatch, reopenOnResume, autoWatched: [...autoWatched].sort() }
   }
 
   function load() {
@@ -210,6 +211,7 @@ function createStore(file, log) {
         const parsed = JSON.parse(text)
         todos = normalizeTodos(parsed?.todos)
         autoWatch = parsed?.autoWatch === true
+        reopenOnResume = parsed?.reopenOnResume === true
         for (const sessionId of normalizeWatchList(parsed?.autoWatched)) autoWatched.add(sessionId)
       } catch (error) {
         if (error?.code !== 'ENOENT') log('could not read ' + file, error)
@@ -223,6 +225,7 @@ function createStore(file, log) {
       version: FILE_VERSION,
       updatedAt: Date.now(),
       autoWatch,
+      reopenOnResume,
       autoWatched: [...autoWatched].sort(),
       todos,
     }, null, 2)
@@ -286,13 +289,17 @@ function createStore(file, log) {
     return next
   }
 
-  /** Watch while the todo is open; release it once done or gone. */
-  function reconcile(sessionId) {
+  /**
+   * Watch while the todo is open; release it once done or gone. A plain todo
+   * has no stored entry, so a done:false write passes forceOpen to say "this
+   * session is open now" even though nothing is persisted for it.
+   */
+  function reconcile(sessionId, forceOpen) {
     if (!autoWatch) return
     queueWatch(sessionId, async () => {
       if (!autoWatch) return
       const entry = todos[sessionId]
-      const shouldWatch = entry !== undefined && entry.done !== true
+      const shouldWatch = entry !== undefined ? entry.done !== true : forceOpen === true
       const owned = autoWatched.has(sessionId)
       if (shouldWatch && !owned) {
         if (await postWatch(sessionId, true)) {
@@ -334,14 +341,21 @@ function createStore(file, log) {
         listeners.delete(listener)
       }
     },
-    /** Turn auto-watch on or off; turning it off releases every owned watch. */
-    async setAutoWatch(value) {
+    /** Change one or both preferences; a disabled auto-watch releases its watches. */
+    async setSettings(patch) {
       await load()
-      const next = value === true
-      if (next === autoWatch) return settingsSnapshot()
-      autoWatch = next
+      let changed = false
+      if (patch.autoWatch !== undefined && patch.autoWatch !== autoWatch) {
+        autoWatch = patch.autoWatch
+        changed = true
+      }
+      if (patch.reopenOnResume !== undefined && patch.reopenOnResume !== reopenOnResume) {
+        reopenOnResume = patch.reopenOnResume
+        changed = true
+      }
+      if (!changed) return settingsSnapshot()
       await persist()
-      if (!next) for (const sessionId of [...autoWatched]) release(sessionId)
+      if (!autoWatch) for (const sessionId of [...autoWatched]) release(sessionId)
       return settingsSnapshot()
     },
     /** Merge one patch into a session's todo, creating or dropping it as needed. */
@@ -367,7 +381,7 @@ function createStore(file, log) {
       else todos[sessionId] = entry
       await persist()
       emit()
-      reconcile(sessionId)
+      reconcile(sessionId, patch.done === false)
       return snapshotTodos(todos)
     },
     /** Forget one session's todo entirely. */
@@ -554,11 +568,35 @@ function createSettingsHandler(store, log) {
           sendJson(response, 400, { ok: false, error: error.message === 'request body is too large' ? error.message : 'invalid JSON body' })
           return
         }
-        if (payload === null || typeof payload !== 'object' || typeof payload.on !== 'boolean') {
-          sendJson(response, 400, { ok: false, error: 'on must be a boolean' })
+        const patch = {}
+        if (payload !== null && typeof payload === 'object') {
+          if (Object.hasOwn(payload, 'on')) {
+            if (typeof payload.on !== 'boolean') {
+              sendJson(response, 400, { ok: false, error: 'on must be a boolean' })
+              return
+            }
+            patch.autoWatch = payload.on
+          }
+          if (Object.hasOwn(payload, 'autoWatch')) {
+            if (typeof payload.autoWatch !== 'boolean') {
+              sendJson(response, 400, { ok: false, error: 'autoWatch must be a boolean' })
+              return
+            }
+            patch.autoWatch = payload.autoWatch
+          }
+          if (Object.hasOwn(payload, 'reopenOnResume')) {
+            if (typeof payload.reopenOnResume !== 'boolean') {
+              sendJson(response, 400, { ok: false, error: 'reopenOnResume must be a boolean' })
+              return
+            }
+            patch.reopenOnResume = payload.reopenOnResume
+          }
+        }
+        if (patch.autoWatch === undefined && patch.reopenOnResume === undefined) {
+          sendJson(response, 400, { ok: false, error: 'send autoWatch and/or reopenOnResume' })
           return
         }
-        const settings = await store.setAutoWatch(payload.on)
+        const settings = await store.setSettings(patch)
         sendJson(response, 200, Object.assign({ ok: true }, settings))
         return
       }

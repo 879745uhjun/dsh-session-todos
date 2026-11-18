@@ -2,6 +2,16 @@
 
 本文件记录 dsh-session-todos 的每次可见变化。版本号遵循语义化版本。
 
+## 0.6.0 — 2026-11-18
+
+> 来源：用户拍板选定方案 C（保留「重新开工自动取消完成」的行为，但做成开关、默认关）。
+
+### 新增
+
+- 新设置 `reopenOnResume`（默认 `false`），与 `autoWatch` 一起存于 `session-todos.json`，经 `GET/POST /session-todos/settings` 读写；POST 接受 `autoWatch` / `reopenOnResume`，旧的 `on` 仍作为 autoWatch 的别名。
+- Todo 页头部新增「会话重新开工时取消完成」开关，与「待办自动关注」并列；开启时页面顶部显示一行代价说明（会重新触发自动关注）。
+- 关闭时**不注册**会话监听（不是注册后空转）：默认语义回到「显式勾选优先」；开启后才在 running 的 false → true 跳变、且 done === true 时把 done 重置，并因此重新触发自动关注（若 autoWatch 也开着）。
+
 ## 0.5.0 — 2026-11-18
 
 ### 新增
