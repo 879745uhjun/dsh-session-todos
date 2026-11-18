@@ -722,6 +722,61 @@ test('unmounting the page detaches from notepad', async () => {
   }
 })
 
+test('an empty note list shows no marker and takes no space', async () => {
+  setNotepad(createNotepad([]))
+  try {
+    const { registrations } = boot()
+    await settle()
+    const { nodes } = await openPage(registrations, 'off')
+    assert.equal(byClass(nodes, 'st-note-link').length, 0)
+    assert.ok(byClass(nodes, 'st-row').length >= 2, 'rows render without placeholders')
+  } finally {
+    setNotepad(undefined)
+  }
+})
+
+test('a throwing dshNotepad getter is treated as absent', async () => {
+  Object.defineProperty(harnessWindow, 'dshNotepad', {
+    configurable: true,
+    get() {
+      throw new Error('notepad state is broken')
+    },
+  })
+  try {
+    const { registrations } = boot()
+    await settle()
+    const { nodes } = await openPage(registrations, 'off')
+    assert.equal(byClass(nodes, 'st-note-link').length, 0)
+    assert.ok(byClass(nodes, 'st-row').length > 0)
+  } finally {
+    delete harnessWindow.dshNotepad
+  }
+})
+
+test('throwing open and subscribe calls keep the page alive', async () => {
+  setNotepad({
+    version: 1,
+    listSessionNotes: () => [{ sessionId: 'session-idle', updatedAt: 1, preview: 'x' }],
+    openSessionNote() {
+      throw new Error('open failed')
+    },
+    subscribe() {
+      throw new Error('subscribe failed')
+    },
+  })
+  try {
+    const { registrations } = boot()
+    await settle()
+    const { nodes } = await openPage(registrations, 'off')
+    const links = byClass(nodes, 'st-note-link')
+    assert.equal(links.length, 1)
+    links[0].props.onClick({ preventDefault() {}, stopPropagation() {} }) // must not throw
+    assert.ok(byClass(nodes, 'st-row').length > 0)
+  } finally {
+    setNotepad(undefined)
+  }
+})
+
 test('a missing or mismatched notepad protocol shows no markers', async () => {
   const broken = {
     version: 1,
