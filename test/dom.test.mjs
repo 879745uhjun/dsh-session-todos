@@ -971,8 +971,11 @@ test('without notify the drawer keeps only the todo settings', async () => {
 
   assert.equal(byClass(opened, 'st-set-group').length, 1, 'one group only')
   assert.equal(textOf(opened).includes('结束时提醒我'), false, 'no reminder row')
-  const writes = requests.filter((request) => /\/session-notify\/(watch|mode|settings)/.test(String(request.url)))
-  assert.equal(writes.length, 0, 'no reminder writes while notify is absent')
+  const reminders = requests.filter((request) => String(request.url).includes('/session-notify'))
+  const writes = reminders.filter((request) => /\/session-notify\/(watch|mode|settings)/.test(String(request.url)))
+  assert.equal(writes.length, 0, 'zero reminder writes while notify is absent')
+  assert.ok(reminders.length <= 1, 'at most one capability probe, nothing else')
+  assert.ok(reminders.every((request) => (request.init?.method ?? 'GET') === 'GET'), 'the probe is read-only')
 })
 
 test('the drawer switch and the header switch share one store', async () => {
