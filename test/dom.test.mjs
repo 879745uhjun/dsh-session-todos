@@ -114,6 +114,17 @@ class StubEventSource {
 
   addEventListener(name, handler) {
     this.listeners.set(name, handler)
+    // The real stream pushes a snapshot on connect; the self-test needs that.
+    if (name === 'todos') {
+      queueMicrotask(() => {
+        if (this.listeners.get(name) !== handler) return
+        try {
+          handler({ data: '{"ok":true,"todos":{}}' })
+        } catch {
+          /* the listener ignored it */
+        }
+      })
+    }
   }
 
   removeEventListener(name, handler) {
@@ -137,6 +148,8 @@ let boxesMode = 'off'
 let notifyMode = 'ok' // 'ok' | 'off' | 'broken'
 let settings = { autoWatch: false, reopenOnResume: false }
 let settingsWriteFails = false
+let settingsGetFails = false
+let clipboardText = ''
 const settingsPosts = []
 
 const boxesPayload = {
@@ -160,7 +173,13 @@ const fetch = (url, init) => {
     if (notifyMode === 'off') return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({ ok: false }) })
     return reply({ ok: true, watching: [] })
   }
+  if (String(url).includes('/session-todos/health')) {
+    return reply({ ok: true, tool: 'session_todos', registered: true })
+  }
   if (String(url).includes('/session-todos/settings')) {
+    if (settingsGetFails && (init === undefined || init.method !== 'POST')) {
+      return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({ ok: false }) })
+    }
     if (init !== undefined && init.method === 'POST') {
       const body = JSON.parse(init.body)
       settingsPosts.push(body)
@@ -261,6 +280,7 @@ const sandbox = {
   }),
   document,
   fetch,
+  navigator: { clipboard: { writeText: async (text) => { clipboardText = text } } },
   EventSource: StubEventSource,
   console,
   setInterval: () => 0,
@@ -356,6 +376,7 @@ function boot(overrides = {}) {
   settings = Object.assign({ autoWatch: false, reopenOnResume: false }, overrides)
   settingsPosts.length = 0
   settingsWriteFails = false
+  settingsGetFails = false
   const sessionsService = createSessionsService(sessions)
   const locale = {
     dictionaries: {},
@@ -846,6 +867,66 @@ test('a failed settings write reverts the reopen switch', async () => {
   const after = renderComponent(page, {}, true)
   assert.equal(findToggle(after).props['aria-pressed'], false, 'the optimistic flip is rolled back')
   assert.equal(byClass(after, 'st-link-note').length, 0, 'no cost note while it is off')
+})
+
+const SELF_TEST_SUBJECT = { kind: 'bundle', pkg: { name: 'dsh-session-todos' } }
+
+/** The registered self-test section component. */
+function selfTestComponent(registrations) {
+  return registrations.find((item) => (item.definition?.id ?? '') === 'dsh-session-todos.selftest').component
+}
+
+test('the self-test section belongs to this plugin only', () => {
+  const { registrations } = boot()
+  const entry = registrations.find((item) => (item.definition?.id ?? '') === 'dsh-session-todos.selftest')
+  assert.ok(entry, 'the section is registered')
+  assert.equal(entry.definition.name, 'plugins.detail.section')
+  assert.equal(entry.definition.order, 90)
+  const other = renderComponent(entry.component, { subject: { kind: 'bundle', pkg: { name: 'other-plugin' } } })
+  assert.equal(other.length, 0, 'nothing renders on another plugin page')
+})
+
+test('a self-test run passes every check and copies Markdown', async () => {
+  const { registrations } = boot()
+  await settle()
+  const section = selfTestComponent(registrations)
+  const nodes = renderComponent(section, { subject: SELF_TEST_SUBJECT, timeoutMs: 40 })
+  const run = byClass(nodes, 'st-st-btn').find((node) => node.props['data-selftest-action'] === 'run')
+  assert.ok(run, 'the run button renders')
+  run.props.onClick()
+  for (let turn = 0; turn < 8; turn += 1) await settle()
+
+  const after = renderComponent(section, { subject: SELF_TEST_SUBJECT, timeoutMs: 40 }, true)
+  assert.deepEqual(
+    byClass(after, 'st-st-badge').map((node) => node.props['data-status']),
+    ['pass', 'pass', 'pass', 'pass'],
+  )
+
+  clipboardText = ''
+  const copy = byClass(after, 'st-st-btn').find((node) => node.props['data-selftest-action'] === 'copy')
+  copy.props.onClick()
+  for (let turn = 0; turn < 3; turn += 1) await settle()
+  const lines = clipboardText.split('\n')
+  assert.equal(lines.length, 4, 'one Markdown line per check')
+  assert.ok(lines.every((line) => line.startsWith('- [x] ')), 'passing checks are ticked')
+})
+
+test('one failing check leaves the others untouched', async () => {
+  const { registrations } = boot()
+  await settle()
+  settingsGetFails = true
+  const section = selfTestComponent(registrations)
+  const nodes = renderComponent(section, { subject: SELF_TEST_SUBJECT, timeoutMs: 40 })
+  byClass(nodes, 'st-st-btn').find((node) => node.props['data-selftest-action'] === 'run').props.onClick()
+  for (let turn = 0; turn < 8; turn += 1) await settle()
+
+  const after = renderComponent(section, { subject: SELF_TEST_SUBJECT, timeoutMs: 40 }, true)
+  const rows = byClass(after, 'st-st-row')
+  const status = (id) => rows.find((row) => row.props['data-check'] === id).props['data-status']
+  assert.equal(status('settings'), 'fail')
+  assert.equal(status('route'), 'pass')
+  assert.equal(status('events'), 'pass')
+  assert.equal(status('tool'), 'pass')
 })
 
 test('the stylesheet is injected once and removed by its disposer', () => {

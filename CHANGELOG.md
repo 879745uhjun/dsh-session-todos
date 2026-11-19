@@ -2,6 +2,15 @@
 
 本文件记录 dsh-session-todos 的每次可见变化。版本号遵循语义化版本。
 
+## 0.7.0 — 2026-11-18
+
+> 来源：生态规范「插件自检区块规范」，用户要求每个插件在自己的详情页提供一键自检。
+
+### 新增
+
+- 插件详情页「自检」区块（`plugins.detail.section`，id `dsh-session-todos.selftest`，order 90）：只在点击时运行，四项检查（`/session-todos`、`/session-todos/settings`、SSE、`session_todos` 工具），每项 2s 超时、互不影响，支持汇总与复制 Markdown。
+- 新增只读路由 `GET /session-todos/health`，返回 `{ok, tool:'session_todos', registered}`，供自检确认工具已注册。
+
 ## 0.6.0 — 2026-11-18
 
 > 来源：用户拍板选定方案 C（保留「重新开工自动取消完成」的行为，但做成开关、默认关）。

@@ -70,6 +70,32 @@ window.__ModuleLoader__.load({
       'link.toggle': 'Auto-watch todos',
       'link.hint': 'Watch a session when its todo is opened; finishing or clearing it only releases watches this plugin created.',
       'reopen.toggle': 'Reopen on resume',
+      'selftest.title': 'Self-test',
+      'selftest.run': 'Run self-test',
+      'selftest.running': 'Running…',
+      'selftest.idle': 'Not run yet',
+      'selftest.summary': '{pass} passed · {fail} failed · {skip} skipped',
+      'selftest.pass': 'Passed',
+      'selftest.fail': 'Failed',
+      'selftest.skip': 'Skipped',
+      'selftest.copy': 'Copy results',
+      'selftest.copied': 'Copied',
+      'selftest.copyFailed': 'Could not copy',
+      'selftest.colon': ': ',
+      'selftest.timeout': 'timed out',
+      'selftest.noAnswer': 'no answer',
+      'selftest.http': 'HTTP {status}',
+      'selftest.route': 'GET /session-todos',
+      'selftest.routeBad': 'response has no todos map',
+      'selftest.routeOk': '{count} todos',
+      'selftest.settings': 'GET /session-todos/settings',
+      'selftest.settingsBad': 'autoWatch / reopenOnResume missing',
+      'selftest.events': 'SSE /session-todos/events',
+      'selftest.eventsUnavailable': 'event stream unavailable — skipped',
+      'selftest.eventsSilent': 'no event within the budget — skipped',
+      'selftest.noEventSource': 'EventSource is unavailable — skipped',
+      'selftest.tool': 'Tool session_todos',
+      'selftest.toolBad': 'the host reports the tool is not registered',
       'reopen.hint': 'When on, a checked todo is unchecked the moment its session starts working again. With auto-watch on, that reopen watches the session again.',
       'reopen.note': 'Reopen on resume is on: checked todos are reset to to-do when their session starts working again, which also re-watches those sessions while auto-watch is enabled.',
       'page.title': 'Todos',
@@ -131,6 +157,32 @@ window.__ModuleLoader__.load({
       'link.toggle': '待办自动关注',
       'link.hint': '勾成待办时自动关注该会话；完成或清除时只取消本插件建立的关注。',
       'reopen.toggle': '会话重新开工时取消完成',
+      'selftest.title': '自检',
+      'selftest.run': '运行自检',
+      'selftest.running': '运行中…',
+      'selftest.idle': '未运行',
+      'selftest.summary': '{pass} 通过 · {fail} 失败 · {skip} 跳过',
+      'selftest.pass': '通过',
+      'selftest.fail': '失败',
+      'selftest.skip': '跳过',
+      'selftest.copy': '复制结果',
+      'selftest.copied': '已复制',
+      'selftest.copyFailed': '复制失败',
+      'selftest.colon': '：',
+      'selftest.timeout': '超时',
+      'selftest.noAnswer': '没有响应',
+      'selftest.http': 'HTTP {status}',
+      'selftest.route': '接口 GET /session-todos',
+      'selftest.routeBad': '响应里没有 todos 对象',
+      'selftest.routeOk': '{count} 条待办',
+      'selftest.settings': '设置接口 /session-todos/settings',
+      'selftest.settingsBad': '缺少 autoWatch / reopenOnResume',
+      'selftest.events': '实时通道 /session-todos/events',
+      'selftest.eventsUnavailable': '实时通道不可用，已跳过',
+      'selftest.eventsSilent': '超时内没有事件，已跳过',
+      'selftest.noEventSource': '浏览器不支持 EventSource，已跳过',
+      'selftest.tool': '工具 session_todos',
+      'selftest.toolBad': '宿主报告工具未注册',
       'reopen.hint': '开启后，已勾选的待办会在该会话重新开工时自动取消；若同时开着「待办自动关注」，还会重新触发一次关注。',
       'reopen.note': '已开启「会话重新开工时取消完成」：勾选的待办会在会话重新开工时重置为待办，并因此重新触发自动关注。',
       'page.title': '待办',
@@ -236,6 +288,28 @@ window.__ModuleLoader__.load({
       '.st-btn[disabled]{opacity:.5;cursor:default}',
       '.st-link-note{margin:0 0 12px;padding:8px 10px;border-radius:var(--dsw-radius-md,8px);',
       'background:var(--dsw-alias-bg-layer-2);font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}',
+      '.st-st{margin-top:18px;display:flex;flex-direction:column;gap:10px}',
+      '.st-st-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}',
+      '.st-st-title{margin:0 auto 0 0;font-size:14px;line-height:20px;font-weight:600;color:var(--dsw-alias-label-primary)}',
+      '.st-st-btn{appearance:none;box-sizing:border-box;font:inherit;font-size:12px;line-height:18px;height:28px;padding:0 12px;',
+      'border-radius:8px;border:.5px solid var(--dsw-alias-border-l2);background:transparent;color:var(--dsw-alias-label-primary);cursor:pointer;',
+      'display:inline-flex;align-items:center;gap:6px;white-space:nowrap}',
+      '.st-st-btn:hover{background:var(--dsw-alias-bg-layer-2)}',
+      '.st-st-btn[data-primary=true]{border-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-brand-primary)}',
+      '.st-st-btn:disabled{opacity:.55;cursor:default}',
+      '.st-st-btn:disabled:hover{background:transparent}',
+      '.st-st-btn:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:1px}',
+      '.st-st-sum{font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}',
+      '.st-st-list{display:flex;flex-direction:column;gap:2px}',
+      '.st-st-row{display:flex;align-items:flex-start;gap:10px;padding:7px 10px;border-radius:8px;background:var(--dsw-alias-bg-layer-1)}',
+      '.st-st-label{flex:1;min-width:0;font-size:12px;line-height:18px;color:var(--dsw-alias-label-primary)}',
+      '.st-st-detail{margin-top:2px;font-size:11px;line-height:16px;color:var(--dsw-alias-label-secondary)}',
+      '.st-st-badge{flex:none;font-size:11px;line-height:16px;padding:2px 8px;border-radius:999px;',
+      'border:.5px solid var(--dsw-alias-border-l2);color:var(--dsw-alias-label-secondary)}',
+      '.st-st-badge[data-status=pass]{color:var(--dsw-alias-state-success-primary);border-color:var(--dsw-alias-state-success-primary)}',
+      '.st-st-badge[data-status=fail]{color:var(--dsw-alias-state-error-primary);border-color:var(--dsw-alias-state-error-primary)}',
+      '.st-st-badge[data-status=run]{color:var(--dsw-alias-brand-primary);border-color:var(--dsw-alias-brand-primary)}',
+      '.st-st-badge[data-status=skip]{color:var(--dsw-alias-state-warn-primary);border-color:var(--dsw-alias-state-warn-primary)}',
       '.st-scroll{flex:1;min-height:0;overflow:auto;padding:0 28px 36px;overscroll-behavior:contain}',
       '.st-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:10px;margin:4px 0 18px}',
       '.st-card{border:.5px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-lg,12px);',
@@ -1818,6 +1892,230 @@ window.__ModuleLoader__.load({
     }
 
     /* ------------------------------------------------------------------ *
+     * Plugin detail self-test (plugins.detail.section)
+     * ------------------------------------------------------------------ */
+
+    const PACKAGE_NAME = 'dsh-session-todos'
+    const CHECK_TIMEOUT_MS = 2000
+    const HEALTH_ENDPOINT = '/session-todos/health'
+
+    /** One request under the section's budget; never throws. */
+    async function probe(path, init, timeoutMs) {
+      const controller = typeof AbortController === 'function' ? new AbortController() : null
+      const timer = controller === null
+        ? null
+        : setTimeout(() => {
+          try {
+            controller.abort()
+          } catch {
+            /* already aborted */
+          }
+        }, timeoutMs)
+      try {
+        const response = await fetch(path, Object.assign({}, init, {
+          signal: controller === null ? undefined : controller.signal,
+        }))
+        let json
+        try {
+          json = await response.json()
+        } catch {
+          json = undefined
+        }
+        return { reached: true, status: response.status, json }
+      } catch {
+        return { reached: false, timedOut: controller !== null && controller.signal.aborted, status: 0 }
+      } finally {
+        if (timer !== null) clearTimeout(timer)
+      }
+    }
+
+    /** The four checks, each bounded by the section's budget. */
+    function selfTestChecks(t, timeoutMs) {
+      const missed = (result) => (result.timedOut ? t('selftest.timeout') : t('selftest.noAnswer'))
+      return [
+        {
+          id: 'route',
+          label: t('selftest.route'),
+          run: async () => {
+            const result = await probe(ENDPOINT, { headers: { accept: 'application/json' }, cache: 'no-store' }, timeoutMs)
+            if (!result.reached) return { ok: false, detail: missed(result) }
+            if (result.status !== 200) return { ok: false, detail: t('selftest.http', { status: result.status }) }
+            const todos = result.json?.todos
+            if (result.json?.ok !== true || todos === null || typeof todos !== 'object' || Array.isArray(todos)) {
+              return { ok: false, detail: t('selftest.routeBad') }
+            }
+            return { ok: true, detail: t('selftest.routeOk', { count: Object.keys(todos).length }) }
+          },
+        },
+        {
+          id: 'settings',
+          label: t('selftest.settings'),
+          run: async () => {
+            const result = await probe(SETTINGS_ENDPOINT, { headers: { accept: 'application/json' }, cache: 'no-store' }, timeoutMs)
+            if (!result.reached) return { ok: false, detail: missed(result) }
+            if (result.status !== 200) return { ok: false, detail: t('selftest.http', { status: result.status }) }
+            if (typeof result.json?.autoWatch !== 'boolean' || typeof result.json?.reopenOnResume !== 'boolean') {
+              return { ok: false, detail: t('selftest.settingsBad') }
+            }
+            return {
+              ok: true,
+              detail: 'autoWatch=' + String(result.json.autoWatch) + ' · reopenOnResume=' + String(result.json.reopenOnResume),
+            }
+          },
+        },
+        {
+          id: 'events',
+          label: t('selftest.events'),
+          run: () => {
+            if (typeof EventSource !== 'function') return { skip: true, detail: t('selftest.noEventSource') }
+            return new Promise((resolve) => {
+              let done = false
+              let timer = null
+              const source = new EventSource(EVENTS)
+              const finish = (value) => {
+                if (done) return
+                done = true
+                if (timer !== null) clearTimeout(timer)
+                try {
+                  source.close()
+                } catch {
+                  /* already closed */
+                }
+                resolve(value)
+              }
+              timer = setTimeout(() => finish({ skip: true, detail: t('selftest.eventsSilent') }), timeoutMs)
+              source.addEventListener('todos', () => finish({ ok: true }))
+              source.addEventListener('error', () => finish({ skip: true, detail: t('selftest.eventsUnavailable') }))
+            })
+          },
+        },
+        {
+          id: 'tool',
+          label: t('selftest.tool'),
+          run: async () => {
+            const result = await probe(HEALTH_ENDPOINT, { headers: { accept: 'application/json' }, cache: 'no-store' }, timeoutMs)
+            if (!result.reached) return { ok: false, detail: missed(result) }
+            if (result.status !== 200) return { ok: false, detail: t('selftest.http', { status: result.status }) }
+            if (result.json?.registered !== true || result.json?.tool !== 'session_todos') {
+              return { ok: false, detail: t('selftest.toolBad') }
+            }
+            return { ok: true, detail: 'session_todos' }
+          },
+        },
+      ]
+    }
+
+    /** The section: a run button, the summary, the rows, and a Markdown copy. */
+    function SelfTestSection({ ctx, subject, timeoutMs }) {
+      const locale = ctx.locale ?? readService(ctx, 'locale')
+      useLocaleRevision(locale)
+      const t = locale.bind(NS)
+      const [rows, setRows] = useState([])
+      const [running, setRunning] = useState(false)
+      const [note, setNote] = useState('')
+      const budget = typeof timeoutMs === 'number' && timeoutMs > 0 ? timeoutMs : CHECK_TIMEOUT_MS
+      const checks = selfTestChecks(t, budget)
+      const pkg = subject !== null && typeof subject === 'object' ? subject.pkg : undefined
+      const mine = pkg !== undefined && pkg !== null && typeof pkg === 'object' && pkg.name === PACKAGE_NAME
+      if (!mine) return null
+
+      const counts = rows.reduce((acc, row) => {
+        if (row.status === 'pass') acc.pass += 1
+        else if (row.status === 'skip') acc.skip += 1
+        else if (row.status === 'fail') acc.fail += 1
+        return acc
+      }, { pass: 0, fail: 0, skip: 0 })
+      const summary = rows.length === 0
+        ? t('selftest.idle')
+        : t('selftest.summary', { pass: counts.pass, fail: counts.fail, skip: counts.skip })
+
+      const pending = () => checks.map((check) => ({ id: check.id, label: check.label, status: 'run', detail: '' }))
+
+      const run = async () => {
+        if (running) return
+        setRunning(true)
+        setNote('')
+        setRows(pending())
+        const settled = []
+        for (const check of checks) {
+          let outcome
+          try {
+            outcome = await check.run()
+          } catch (error) {
+            outcome = { ok: false, detail: String(error?.message ?? error) }
+          }
+          settled.push({
+            id: check.id,
+            label: check.label,
+            status: outcome.skip === true ? 'skip' : outcome.ok === true ? 'pass' : 'fail',
+            detail: typeof outcome.detail === 'string' ? outcome.detail : '',
+          })
+          setRows(settled.concat(checks.slice(settled.length).map((rest) => ({
+            id: rest.id, label: rest.label, status: 'run', detail: '',
+          }))))
+        }
+        setRows(settled)
+        setRunning(false)
+      }
+
+      const statusText = (status) => (status === 'pass' ? t('selftest.pass')
+        : status === 'fail' ? t('selftest.fail')
+          : status === 'skip' ? t('selftest.skip')
+            : status === 'run' ? t('selftest.running') : t('selftest.idle'))
+
+      const markdown = () => rows.map((row) => (row.status === 'pass'
+        ? '- [x] ' + row.label + ' — ' + t('selftest.pass')
+        : '- [ ] ' + row.label + ' — ' + statusText(row.status)
+          + (row.detail === '' ? '' : t('selftest.colon') + row.detail))).join('\n')
+
+      const copy = async () => {
+        const text = rows.length === 0 ? t('selftest.idle') : markdown()
+        try {
+          if (typeof navigator === 'undefined' || navigator.clipboard === undefined) throw new Error('no clipboard')
+          await navigator.clipboard.writeText(text)
+          setNote(t('selftest.copied'))
+        } catch {
+          setNote(t('selftest.copyFailed'))
+        }
+      }
+
+      return h('div', { className: 'st-st', 'data-selftest': PACKAGE_NAME },
+        h('div', { className: 'st-st-head' },
+          h('h3', { className: 'st-st-title' }, t('selftest.title')),
+          h('button', {
+            type: 'button',
+            className: 'st-st-btn',
+            'data-primary': 'true',
+            'data-selftest-action': 'run',
+            disabled: running,
+            onClick: () => {
+              void run()
+            },
+          }, running ? t('selftest.running') : t('selftest.run')),
+          h('span', { className: 'st-st-sum', 'data-selftest-summary': summary }, summary),
+          h('button', {
+            type: 'button',
+            className: 'st-st-btn',
+            'data-selftest-action': 'copy',
+            disabled: rows.length === 0,
+            onClick: () => {
+              void copy()
+            },
+          }, t('selftest.copy'))),
+        note === '' ? null : h('p', { className: 'st-st-sum', 'data-selftest-note': note }, note),
+        h('div', { className: 'st-st-list' }, rows.map((row) => h('div', {
+          key: row.id,
+          className: 'st-st-row',
+          'data-check': row.id,
+          'data-status': row.status,
+        },
+          h('div', { className: 'st-st-label' },
+            h('div', null, row.label),
+            row.detail === '' || row.status === 'run' ? null : h('div', { className: 'st-st-detail' }, row.detail)),
+          h('span', { className: 'st-st-badge', 'data-status': row.status }, statusText(row.status))))))
+    }
+
+    /* ------------------------------------------------------------------ *
      * Client plugin
      * ------------------------------------------------------------------ */
 
@@ -1923,6 +2221,16 @@ window.__ModuleLoader__.load({
           key: PANEL_ID,
           locale: NS,
         }, Page))
+
+        // The self-test renders on this plugin's own detail page only, and runs
+        // nothing until its button is pressed.
+        const SelfTest = (props) => h(SelfTestSection, Object.assign({}, props, { ctx }))
+        ctx.slots.inject('plugins.detail.section', () => ctx.slots.register({
+          name: 'plugins.detail.section',
+          id: 'dsh-session-todos.selftest',
+          order: 90,
+          locale: NS,
+        }, SelfTest))
 
         ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
           name: 'sidebar.panellist',

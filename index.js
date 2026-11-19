@@ -33,6 +33,8 @@ const SSE_HEARTBEAT_MS = 20_000
 const FILE_VERSION = 2
 /** Browser route that reads and writes the auto-watch preference. */
 const SETTINGS_ROUTE = '/session-todos/settings'
+/** Tiny read-only route used by the plugin detail self-test. */
+const HEALTH_ROUTE = '/session-todos/health'
 /** dsh-session-notify's watch route; absent peers degrade silently. */
 const NOTIFY_WATCH_ROUTE = '/session-notify/watch'
 /** Watch call timeout; a slow peer must not hold the todo mutation. */
@@ -545,6 +547,26 @@ function createRouteHandler(store, log) {
   }
 }
 
+/** Read-only health probe: which tool this plugin registered, and whether it did. */
+function createHealthHandler(isToolRegistered) {
+  return function handleSessionTodoHealth(request, response) {
+    if (!isAcceptableOrigin(request)) {
+      sendJson(response, 403, { ok: false, error: 'cross-origin request refused' })
+      return
+    }
+    if (request.method !== 'GET') {
+      response.writeHead(405, { allow: 'GET', 'content-type': 'application/json; charset=utf-8' })
+      response.end(JSON.stringify({ ok: false, error: 'method not allowed' }))
+      return
+    }
+    sendJson(response, 200, {
+      ok: true,
+      tool: 'session_todos',
+      registered: isToolRegistered() === true,
+    })
+  }
+}
+
 /** Browser route for the auto-watch preference: GET reads it, POST changes it. */
 function createSettingsHandler(store, log) {
   return async function handleSessionTodoSettings(request, response) {
@@ -849,7 +871,12 @@ export function apply(ctx) {
 
   ctx.effect(() => () => events.close(), 'session-todos: event stream')
 
-  ctx.effect(() => ctx.tools.register(createTool(store)), 'session-todos: agent tool')
+  let toolRegistered = false
+  ctx.effect(() => {
+    const dispose = ctx.tools.register(createTool(store))
+    toolRegistered = true
+    return dispose
+  }, 'session-todos: agent tool')
 
   // The browser and desktop compositions mount a web server; other surfaces
   // still get the file-backed tool without an HTTP route.
@@ -857,9 +884,11 @@ export function apply(ctx) {
     scope.effect(() => {
       const removeTodos = scope.webServer.register({ kind: 'exact', path: ROUTE, handler: createRouteHandler(store, log) })
       const removeSettings = scope.webServer.register({ kind: 'exact', path: SETTINGS_ROUTE, handler: createSettingsHandler(store, log) })
+      const removeHealth = scope.webServer.register({ kind: 'exact', path: HEALTH_ROUTE, handler: createHealthHandler(() => toolRegistered) })
       const removeEvents = scope.webServer.register({ kind: 'exact', path: EVENTS_ROUTE, handler: events.attach })
       return () => {
         removeEvents()
+        removeHealth()
         removeSettings()
         removeTodos()
       }

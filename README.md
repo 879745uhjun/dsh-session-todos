@@ -69,6 +69,19 @@ When dsh-notepad (4.4.0+) is installed, every todo whose session already has a n
 - when a note lands, the `subscribe` callback re-reads the list so the row's marker refreshes; the subscription is detached when the page unmounts;
 - **degradation:** a missing `window.dshNotepad`, `version !== 1`, or any throwing call means no icons at all — todos keep working and loading is never blocked.
 
+## Self-test
+
+The plugin detail page (Settings → Plugins → dsh-session-todos) ends with a **Self-test** section that **only fires requests when you press “Run self-test”**:
+
+| Check | Passes when |
+| --- | --- |
+| `GET /session-todos` | 200 and the body carries a `todos` object |
+| `GET /session-todos/settings` | 200 and both `autoWatch` / `reopenOnResume` are booleans |
+| `/session-todos/events` | the stream connects and pushes one `todos` event; an unavailable stream is reported as Skipped |
+| tool `session_todos` | the host's `/session-todos/health` reports it registered |
+
+Each check has a 2 s budget (AbortController) and a failing one leaves the others untouched; **Copy results** produces Markdown (`- [x] label — passed` / `- [ ] label — failed: reason`).
+
 ## Why the square sits on the right
 
 The leading cell of a session row belongs to the app: it shows a running dot while the session works and a completion reminder once it finishes. Any control placed there disappears with those states, so the square lives in the row's trailing seat (next to the star) where it is always visible and never moves.

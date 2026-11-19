@@ -264,6 +264,19 @@ test('the browser route refuses invalid and cross-site payloads', async (t) => {
   assert.equal(wrongMethod.status, 405)
 })
 
+test('the health route reports the registered tool', async (t) => {
+  const home = createHome(t)
+  const host = createHost(home)
+  const health = host.routes.get('/session-todos/health')
+  assert.equal(typeof health, 'function')
+
+  const ok = await call(health, 'GET')
+  assert.deepEqual(ok.json, { ok: true, tool: 'session_todos', registered: true })
+
+  assert.equal((await call(health, 'POST')).status, 405)
+  assert.equal((await call(health, 'GET', undefined, { origin: 'https://evil.example' })).status, 403)
+})
+
 test('the events route is registered', (t) => {
   const home = createHome(t)
   const host = createHost(home)
