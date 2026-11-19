@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>会话提醒与待办 · 设置示例</title>
+<style>
+  :root, [data-theme="dark"] {
+    --bg: #1e1f22;
+    --panel: #26282c;
+    --line: #34373c;
+    --text: #e6e7ea;
+    --muted: #9aa0a6;
+    --accent: #4c8dff;
+    --accent-soft: rgba(76, 141, 255, 0.16);
+    --success: #3fb950;
+    --track: #3a3d43;
+    --chip: #2f3237;
+  }
+  [data-theme="light"] {
+    --bg: #f6f7f9;
+    --panel: #ffffff;
+    --line: #dfe2e7;
+    --text: #1f2329;
+    --muted: #6b7280;
+    --accent: #2563eb;
+    --accent-soft: rgba(37, 99, 235, 0.12);
+    --success: #1a7f37;
+    --track: #d9dde4;
+    --chip: #eef0f3;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 24px 20px 40px;
+    background: var(--dsw-alias-bg-base, var(--bg));
+    color: var(--dsw-alias-label-primary, var(--text));
+    font: 13px/20px "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+  }
+  .page { width: 700px; margin: 0 auto; }
+  .title { margin: 0 0 4px; font-size: 20px; line-height: 28px; font-weight: 600; }
+  .sub { margin: 0 0 16px; color: var(--dsw-alias-label-secondary, var(--muted)); font-size: 12px; line-height: 18px; }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; margin: 0 0 18px; font-size: 12px; color: var(--dsw-alias-label-secondary, var(--muted)); }
+  .legend b { color: var(--dsw-alias-label-primary, var(--text)); font-weight: 600; }
+  .panel {
+    background: var(--dsw-alias-bg-layer-1, var(--panel));
+    border: .5px solid var(--dsw-alias-border-l1, var(--line));
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 16px;
+  }
+  .panel-head {
+    display: flex; align-items: baseline; gap: 10px;
+    padding: 14px 16px 10px;
+    border-bottom: .5px solid var(--dsw-alias-border-l1, var(--line));
+  }
+  .panel-title { margin: 0; font-size: 14px; font-weight: 600; }
+  .panel-note { color: var(--dsw-alias-label-tertiary, var(--muted)); font-size: 11px; }
+  .row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 16px;
+    align-items: center;
+    padding: 12px 16px;
+    border-top: .5px solid var(--dsw-alias-border-l1, var(--line));
+  }
+  .row:first-of-type { border-top: 0; }
+  .label { font-size: 13px; font-weight: 500; }
+  .hint { margin-top: 2px; color: var(--dsw-alias-label-secondary, var(--muted)); font-size: 11.5px; line-height: 17px; }
+  .store { margin-top: 3px; color: var(--dsw-alias-label-tertiary, var(--muted)); font-size: 11px; font-family: Consolas, "Cascadia Mono", monospace; }
+  .control { display: flex; align-items: center; gap: 10px; }
+  .scope {
+    font-size: 11px; line-height: 16px; padding: 2px 8px; border-radius: 999px;
+    border: .5px solid var(--dsw-alias-border-l2, var(--line));
+    color: var(--dsw-alias-label-secondary, var(--muted));
+    white-space: nowrap;
+  }
+  .scope[data-scope="session"] { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+  .switch {
+    position: relative; width: 38px; height: 22px; border-radius: 999px;
+    background: var(--track); cursor: pointer; flex: none; border: 0; padding: 0;
+  }
+  .switch::after {
+    content: ""; position: absolute; top: 3px; left: 3px;
+    width: 16px; height: 16px; border-radius: 50%;
+    background: #fff; transition: left .14s ease;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, .35);
+  }
+  .switch[aria-checked="true"] { background: var(--accent); }
+  .switch[aria-checked="true"]::after { left: 19px; }
+  .segment {
+    display: inline-flex; padding: 2px; gap: 2px; border-radius: 8px; background: var(--chip);
+  }
+  .segment button {
+    border: 0; background: transparent; color: var(--dsw-alias-label-secondary, var(--muted));
+    font: inherit; font-size: 12px; height: 26px; padding: 0 10px; border-radius: 6px; cursor: pointer;
+  }
+  .segment button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .footer { margin-top: 6px; color: var(--dsw-alias-label-tertiary, var(--muted)); font-size: 11px; line-height: 17px; }
+  .missing { display: none; }
+  body[data-notify="0"] .notify-only { display: none !important; }
+  .variant { display: inline-flex; gap: 6px; margin-bottom: 14px; }
+  .variant a {
+    font-size: 11px; padding: 3px 9px; border-radius: 999px; text-decoration: none;
+    border: .5px solid var(--dsw-alias-border-l2, var(--line)); color: var(--muted);
+  }
+  .variant a[aria-current="true"] { color: var(--accent); border-color: var(--accent); }
+</style>
+</head>
+<body data-notify="1">
+  <div class="page">
+    <div class="variant" id="variant"></div>
+    <h1 class="title">会话提醒与待办</h1>
+    <p class="sub" id="intro">这些设置分两类：<b>全局默认</b>作用于所有会话；<b>当前会话</b>只影响你正在看的那个会话。</p>
+    <div class="legend">
+      <span><b>全局默认</b>：对所有会话生效，改动会持久保存</span>
+      <span><b>当前会话</b>：只影响选中的会话，不写全局配置</span>
+    </div>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2 class="panel-title">待办</h2>
+        <span class="panel-note">全局默认 · 存于 session-todos.json</span>
+      </div>
+
+      <div class="row">
+        <div>
+          <div class="label">待办自动关注</div>
+          <div class="hint">勾成待办时自动关注该会话，跑完一轮弹提醒卡；完成或清除时只取消本插件建立的关注。</div>
+          <div class="store">session-todos.json · autoWatch → GET/POST /session-todos/settings</div>
+        </div>
+        <div class="control">
+          <span class="scope">全局默认</span>
+          <button class="switch" role="switch" aria-checked="false" aria-label="待办自动关注"></button>
+        </div>
+      </div>
+
+      <div class="row">
+        <div>
+          <div class="label">会话重新开工时取消完成</div>
+          <div class="hint">开启后，已勾选的待办会在该会话重新开工时自动取消，并因此重新触发自动关注。</div>
+          <div class="store">session-todos.json · reopenOnResume → GET/POST /session-todos/settings</div>
+        </div>
+        <div class="control">
+          <span class="scope">全局默认</span>
+          <button class="switch" role="switch" aria-checked="false" aria-label="会话重新开工时取消完成"></button>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel notify-only" id="notify-panel">
+      <div class="panel-head">
+        <h2 class="panel-title">提醒</h2>
+        <span class="panel-note">需要 dsh-session-notify · 前两项针对当前会话</span>
+      </div>
+
+      <div class="row">
+        <div>
+          <div class="label">结束时提醒我</div>
+          <div class="hint">这个会话跑完一轮就提醒；不勾选时不会为它建提醒。</div>
+          <div class="store">notify 的 watch 表 · POST /session-notify/watch { sessionId, on }</div>
+        </div>
+        <div class="control">
+          <span class="scope" data-scope="session">当前会话</span>
+          <button class="switch" role="switch" aria-checked="true" aria-label="结束时提醒我"></button>
+        </div>
+      </div>
+
+      <div class="row">
+        <div>
+          <div class="label">提醒方式</div>
+          <div class="hint">一次：提醒一次就结束。每次：一直提醒，直到你处理（打开该会话或手动关掉）。</div>
+          <div class="store">POST /session-notify/mode { sessionId, mode: 'once' | 'always' }</div>
+        </div>
+        <div class="control">
+          <span class="scope" data-scope="session">当前会话</span>
+          <span class="segment" role="group" aria-label="提醒方式">
+            <button aria-pressed="true">一次</button>
+            <button aria-pressed="false">每次</button>
+          </span>
+        </div>
+      </div>
+
+      <div class="row">
+        <div>
+          <div class="label">新会话默认值</div>
+          <div class="hint">新建会话时的默认：是否提醒、用哪种提醒方式。已有会话不受影响。</div>
+          <div class="store">全局默认 · notify 侧保存（字段名以 notify 回执为准）</div>
+        </div>
+        <div class="control">
+          <span class="scope">全局默认</span>
+          <button class="switch" role="switch" aria-checked="false" aria-label="新会话默认提醒"></button>
+          <span class="segment" role="group" aria-label="新会话默认提醒方式">
+            <button aria-pressed="true">一次</button>
+            <button aria-pressed="false">每次</button>
+          </span>
+        </div>
+      </div>
+    </section>
+
+    <p class="footer" id="footer">提醒区块只在检测到 dsh-session-notify 时出现：打开设置时探测 GET /session-notify（1.5 秒），404 / 超时 / 坏 JSON 时整块隐藏，不留占位。</p>
+  </div>
+
+<script>
+  var params = new URLSearchParams(location.search);
+  var notify = params.get('notify') !== '0';
+  var theme = params.get('theme') === 'light' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', theme);
+  document.body.setAttribute('data-notify', notify ? '1' : '0');
+  if (!notify) {
+    document.querySelector('.title').textContent = '待办设置';
+    document.title = '待办设置 · 设置示例';
+    document.getElementById('intro').innerHTML = '这些设置作用于 <b>全局默认</b>：对所有会话生效，改动会持久保存。';
+    document.getElementById('footer').textContent = '未检测到可选依赖时，这里只显示待办设置，不出现依赖相关的区块。';
+    document.querySelector('.legend').innerHTML = '<span><b>全局默认</b>：对所有会话生效，改动会持久保存</span>';
+  }
+  var variant = document.getElementById('variant');
+  if (params.get('nav') === '0') variant.style.display = 'none';
+  var links = [
+    { label: 'A · 装了 notify', href: '?notify=1&theme=' + theme },
+    { label: 'B · 没装 notify', href: '?notify=0&theme=' + theme },
+    { label: theme === 'dark' ? '切浅色' : '切深色', href: '?notify=' + (notify ? 1 : 0) + '&theme=' + (theme === 'dark' ? 'light' : 'dark') }
+  ];
+  links.forEach(function (item) {
+    var a = document.createElement('a');
+    a.href = item.href;
+    a.textContent = item.label;
+    if ((item.label.indexOf('A') === 0 && notify) || (item.label.indexOf('B') === 0 && !notify)) a.setAttribute('aria-current', 'true');
+    variant.appendChild(a);
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('.switch'), function (button) {
+    button.addEventListener('click', function () {
+      button.setAttribute('aria-checked', button.getAttribute('aria-checked') === 'true' ? 'false' : 'true');
+    });
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('.segment'), function (group) {
+    group.addEventListener('click', function (event) {
+      var target = event.target;
+      if (target.tagName !== 'BUTTON') return;
+      Array.prototype.forEach.call(group.querySelectorAll('button'), function (button) {
+        button.setAttribute('aria-pressed', button === target ? 'true' : 'false');
+      });
+    });
+  });
+</script>
+</body>
+</html>
