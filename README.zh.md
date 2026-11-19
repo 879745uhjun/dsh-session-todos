@@ -69,6 +69,20 @@
 - 笔记落盘后通过 `subscribe` 回调重新读一次列表，刷新对应行的标记；页面卸载时取消订阅；
 - **降级**：`window.dshNotepad` 不存在、`version !== 1`、或任一调用抛错 → 全部不显示图标，待办功能照常可用，不阻塞加载。
 
+## 发布流程（维护者）
+
+插件以 `link:` 安装，**工作区就是线上**，所以顺序固定：
+
+1. 改完先跑 `npm run check`（`node --check index.js && node --check client.js`），再跑 `npm test` 与 `npm run test:dom`；
+2. 提交后先比对远端，**不要**急着复刻：
+   ```sh
+   gh api repos/<owner>/<repo>/git/ref/heads/main --jq '.object.sha'
+   git rev-parse HEAD
+   ```
+3. `git push` 超时（`exit 124`）**不等于失败**——先做第 2 步；两者相同说明已推成功，直接结束；
+4. 只有确认远端落后时才走复刻（或重试 push）；
+5. **不要 force-push 共享分支**：误推的重复提交内容相同、无害，留着或 revert 即可；`force` 改共享 ref 不可逆。
+
 ## 设置抽屉
 
 Todo 页头部右侧的齿轮打开设置抽屉（约 360px、可滚动；ESC 或点遮罩关闭，焦点回到齿轮）：

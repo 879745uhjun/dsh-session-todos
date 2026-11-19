@@ -69,6 +69,20 @@ When dsh-notepad (4.4.0+) is installed, every todo whose session already has a n
 - when a note lands, the `subscribe` callback re-reads the list so the row's marker refreshes; the subscription is detached when the page unmounts;
 - **degradation:** a missing `window.dshNotepad`, `version !== 1`, or any throwing call means no icons at all — todos keep working and loading is never blocked.
 
+## Release checklist (maintainers)
+
+This plugin is installed via `link:`, so **the working tree is production**:
+
+1. Run `npm run check` (`node --check index.js && node --check client.js`), then `npm test` and `npm run test:dom`;
+2. After committing, compare the remote first — do not replay blindly:
+   ```sh
+   gh api repos/<owner>/<repo>/git/ref/heads/main --jq '.object.sha'
+   git rev-parse HEAD
+   ```
+3. A `git push` timeout (`exit 124`) is **not** a failure: run step 2 first; equal SHAs mean the push already landed;
+4. Only replay (or retry) when the remote is genuinely behind;
+5. **Never force-push a shared branch**: a duplicated commit from a mistaken replay is harmless (same content, extra SHA) — leave it or revert it; `force` rewrites a shared ref irreversibly.
+
 ## Settings drawer
 
 The gear on the right of the Todo page header opens the settings drawer (about 360px, scrollable; Escape or a backdrop click closes it and focus returns to the gear):
