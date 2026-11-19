@@ -1,6 +1,6 @@
 {
   "name": "dsh-session-todos",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Per-session todo checkboxes in the workspace sidebar plus a dedicated Todo page that groups sessions as in progress, to do, and done.",
   "type": "module",
   "main": "index.js",
@@ -35,7 +35,9 @@
     "dsh": ">=0.2.2-rc.1 <0.3.0"
   },
   "scripts": {
+    "pretest": "node --check index.js && node --check client.js",
     "test": "node test/host.test.mjs",
+    "pretest:dom": "node --check index.js && node --check client.js",
     "test:dom": "node test/dom.test.mjs"
   },
   "license": "MIT",

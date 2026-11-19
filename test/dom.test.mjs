@@ -59,6 +59,12 @@ function useSyncExternalStore(subscribe, getSnapshot) {
   return getSnapshot()
 }
 
+function useRef(initial) {
+  const index = cursor++
+  if (slots[index] === undefined) slots[index] = { current: initial }
+  return slots[index]
+}
+
 const React = {
   createElement(type, props, ...children) {
     const merged = Object.assign({}, props)
@@ -70,6 +76,7 @@ const React = {
   useMemo,
   useCallback,
   useSyncExternalStore,
+  useRef,
 }
 
 /* ------------------------------------------------------------------ *
@@ -171,7 +178,10 @@ const fetch = (url, init) => {
   requests.push({ url, init })
   if (String(url).includes('/session-notify')) {
     if (notifyMode === 'off') return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({ ok: false }) })
-    return reply({ ok: true, watching: [] })
+    if (String(url).includes('/session-notify/settings')) {
+      return reply({ ok: true, defaultWatch: false, defaultMode: 'once' })
+    }
+    return reply({ ok: true, watched: {} })
   }
   if (String(url).includes('/session-todos/health')) {
     return reply({ ok: true, tool: 'session_todos', registered: true })
@@ -927,6 +937,92 @@ test('one failing check leaves the others untouched', async () => {
   assert.equal(status('route'), 'pass')
   assert.equal(status('events'), 'pass')
   assert.equal(status('tool'), 'pass')
+})
+
+test('the gear opens the settings drawer and Escape closes it', async () => {
+  const { registrations } = boot()
+  await settle()
+  const { page, nodes } = await openPage(registrations, 'off')
+  const gear = byClass(nodes, 'st-gear')[0]
+  assert.ok(gear, 'the gear renders next to the quick switches')
+
+  gear.props.onClick()
+  let opened = renderComponent(page, {}, true)
+  const dialog = byClass(opened, 'st-drawer-panel')[0]
+  assert.ok(dialog, 'the drawer opens')
+  assert.equal(dialog.props.role, 'dialog')
+  assert.equal(dialog.props['aria-modal'], 'true')
+
+  dialog.props.onKeyDown({ key: 'Escape', preventDefault() {} })
+  opened = renderComponent(page, {}, true)
+  assert.equal(byClass(opened, 'st-drawer-panel').length, 0, 'Escape closes it')
+})
+
+test('without notify the drawer keeps only the todo settings', async () => {
+  const { registrations } = boot()
+  notifyMode = 'off'
+  await settle()
+  const { page, nodes } = await openPage(registrations, 'off')
+  requests.length = 0
+  byClass(nodes, 'st-gear')[0].props.onClick()
+  renderComponent(page, {}, true)
+  await settle()
+  const opened = renderComponent(page, {}, true)
+
+  assert.equal(byClass(opened, 'st-set-group').length, 1, 'one group only')
+  assert.equal(textOf(opened).includes('结束时提醒我'), false, 'no reminder row')
+  const writes = requests.filter((request) => /\/session-notify\/(watch|mode|settings)/.test(String(request.url)))
+  assert.equal(writes.length, 0, 'no reminder writes while notify is absent')
+})
+
+test('the drawer switch and the header switch share one store', async () => {
+  const { registrations } = boot()
+  await settle()
+  const { page, nodes } = await openPage(registrations, 'off')
+  const header = () => byClass(nodes, 'st-btn').find((node) => textOf(node) === 'Auto-watch todos')
+  assert.equal(header().props['aria-pressed'], false)
+
+  byClass(nodes, 'st-gear')[0].props.onClick()
+  const opened = renderComponent(page, {}, true)
+  byClass(opened, 'st-switch')[0].props.onClick()
+  await settle()
+  const after = renderComponent(page, {}, true)
+  const flipped = byClass(after, 'st-btn').find((node) => textOf(node) === 'Auto-watch todos')
+  assert.equal(flipped.props['aria-pressed'], true, 'the header reflects the drawer')
+  assert.deepEqual(settingsPosts, [{ autoWatch: true }])
+})
+
+test('the reminder mode stays disabled until the session is watched', async () => {
+  const { registrations } = boot()
+  await settle()
+  const { page, nodes } = await openPage(registrations, 'off')
+  byClass(nodes, 'st-gear')[0].props.onClick()
+  renderComponent(page, {}, true)
+  await settle()
+  const opened = renderComponent(page, {}, true)
+
+  assert.equal(byClass(opened, 'st-set-group').length, 2, 'the reminder group renders')
+  const [mode, defaults] = byClass(opened, 'st-seg')
+  assert.ok(mode, 'the mode segment renders')
+  assert.ok(
+    mode.props.children.every((button) => button.props.disabled === true),
+    'once/always are disabled while nothing is watched',
+  )
+  assert.ok(defaults, 'the default segment renders')
+  assert.ok(
+    defaults.props.children.every((button) => button.props.disabled === true),
+    'default once/always are disabled while the default switch is off',
+  )
+})
+
+test('every session row renders its todo box', async () => {
+  const { registrations } = boot()
+  await settle()
+  const box = registrations.find((entry) => (entry.definition?.name ?? '') === 'sidebar.session.row.trailing').component
+  for (const sessionId of ['session-doing', 'session-idle', 'session-done', 'session-unknown']) {
+    const nodes = renderComponent(box, { sessionId })
+    assert.equal(byClass(nodes, 'st-box').length, 1, 'box for ' + sessionId)
+  }
 })
 
 test('the stylesheet is injected once and removed by its disposer', () => {

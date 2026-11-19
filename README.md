@@ -69,6 +69,20 @@ When dsh-notepad (4.4.0+) is installed, every todo whose session already has a n
 - when a note lands, the `subscribe` callback re-reads the list so the row's marker refreshes; the subscription is detached when the page unmounts;
 - **degradation:** a missing `window.dshNotepad`, `version !== 1`, or any throwing call means no icons at all — todos keep working and loading is never blocked.
 
+## Settings drawer
+
+The gear on the right of the Todo page header opens the settings drawer (about 360px, scrollable; Escape or a backdrop click closes it and focus returns to the gear):
+
+| Group | Row | Scope | Stored in |
+| --- | --- | --- | --- |
+| Todos | Auto-watch todos | Global default | `session-todos.json · autoWatch` |
+| Todos | Reopen on resume | Global default | `session-todos.json · reopenOnResume` |
+| Reminders | Remind me when it finishes | This session | notify's watch table |
+| Reminders | Reminder mode (once / every time) | This session | `POST /session-notify/mode` |
+| Reminders | New session default | Global default | `GET/POST /session-notify/settings` |
+
+The reminder group only appears when `dsh-session-notify` answers; the mode row stays disabled until the reminder is on, and the default's once/every control stays disabled while its switch is off. The two quick switches in the header share the same state as the drawer rows, so either side updates the other immediately.
+
 ## Self-test
 
 The plugin detail page (Settings → Plugins → dsh-session-todos) ends with a **Self-test** section that **only fires requests when you press “Run self-test”**:

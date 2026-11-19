@@ -70,6 +70,28 @@ window.__ModuleLoader__.load({
       'link.toggle': 'Auto-watch todos',
       'link.hint': 'Watch a session when its todo is opened; finishing or clearing it only releases watches this plugin created.',
       'reopen.toggle': 'Reopen on resume',
+      'drawer.open': 'Settings',
+      'drawer.title': 'Todo settings',
+      'drawer.reminderTitle': 'Reminders & todos',
+      'drawer.close': 'Close',
+      'drawer.todoTitle': 'Todos',
+      'drawer.autoWatch': 'Auto-watch todos',
+      'drawer.autoWatchHint': 'Watch a session when its todo is opened; finishing or clearing it only releases watches this plugin created.',
+      'drawer.reopen': 'Reopen on resume',
+      'drawer.reopenHint': 'Checked todos reset to to-do when their session starts working again, which also re-watches them.',
+      'drawer.watch': 'Remind me when it finishes',
+      'drawer.watchHint': 'Ping me when this session finishes a turn.',
+      'drawer.noSession': 'Open a session first',
+      'drawer.mode': 'Reminder mode',
+      'drawer.once': 'Once',
+      'drawer.always': 'Every time',
+      'drawer.modeNeedsWatch': 'Turn the reminder on first',
+      'drawer.modeOld': 'Needs dsh-session-notify 0.5.0',
+      'drawer.defaults': 'New session default',
+      'drawer.defaultsHint': 'Used when a new session starts; existing sessions keep their own settings.',
+      'drawer.note': 'The reminder block only appears when dsh-session-notify answers the probe.',
+      'scope.global': 'Global default',
+      'scope.session': 'This session',
       'selftest.title': 'Self-test',
       'selftest.run': 'Run self-test',
       'selftest.running': 'Running…',
@@ -157,6 +179,28 @@ window.__ModuleLoader__.load({
       'link.toggle': '待办自动关注',
       'link.hint': '勾成待办时自动关注该会话；完成或清除时只取消本插件建立的关注。',
       'reopen.toggle': '会话重新开工时取消完成',
+      'drawer.open': '设置',
+      'drawer.title': '待办设置',
+      'drawer.reminderTitle': '提醒与待办',
+      'drawer.close': '关闭',
+      'drawer.todoTitle': '待办',
+      'drawer.autoWatch': '待办自动关注',
+      'drawer.autoWatchHint': '勾成待办时自动关注该会话；完成或清除时只取消本插件建立的关注。',
+      'drawer.reopen': '会话重新开工时取消完成',
+      'drawer.reopenHint': '会话重新开工时把已勾选的待办重置为待办，并因此重新触发关注。',
+      'drawer.watch': '结束时提醒我',
+      'drawer.watchHint': '这个会话跑完一轮就提醒。',
+      'drawer.noSession': '先在侧边栏打开一个会话',
+      'drawer.mode': '提醒方式',
+      'drawer.once': '一次',
+      'drawer.always': '每次',
+      'drawer.modeNeedsWatch': '先开启结束提醒',
+      'drawer.modeOld': '需要 dsh-session-notify 0.5.0',
+      'drawer.defaults': '新会话默认值',
+      'drawer.defaultsHint': '新建会话时使用；已有会话保持各自设置。',
+      'drawer.note': '提醒区块只在检测到 dsh-session-notify 时出现。',
+      'scope.global': '全局默认',
+      'scope.session': '当前会话',
       'selftest.title': '自检',
       'selftest.run': '运行自检',
       'selftest.running': '运行中…',
@@ -286,6 +330,52 @@ window.__ModuleLoader__.load({
       '.st-btn[data-active=true]{border-color:var(--dsw-alias-state-business-primary);color:var(--dsw-alias-state-business-primary)}',
       '.st-btn:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:1px}',
       '.st-btn[disabled]{opacity:.5;cursor:default}',
+      '.st-gear{appearance:none;box-sizing:border-box;width:28px;height:28px;padding:0;border-radius:8px;',
+      'border:.5px solid var(--dsw-alias-border-l2);background:transparent;color:var(--dsw-alias-label-secondary);',
+      'display:inline-flex;align-items:center;justify-content:center;cursor:pointer;flex:none}',
+      '.st-gear:hover{background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary)}',
+      '.st-gear:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:1px}',
+      '.st-gear svg{width:15px;height:15px;display:block}',
+      '.st-drawer{position:fixed;inset:0;z-index:80;display:flex;justify-content:flex-end}',
+      '.st-drawer-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.42)}',
+      '.st-drawer-panel{position:relative;width:360px;max-width:92vw;height:100%;display:flex;flex-direction:column;',
+      'background:var(--dsw-alias-bg-layer-1);border-left:.5px solid var(--dsw-alias-border-l2);',
+      'box-shadow:-12px 0 32px rgba(0,0,0,.24);outline:none}',
+      '.st-drawer-head{display:flex;align-items:center;gap:8px;padding:14px 16px;border-bottom:.5px solid var(--dsw-alias-border-l1)}',
+      '.st-drawer-title{flex:1;min-width:0;font-size:14px;line-height:20px;font-weight:600;color:var(--dsw-alias-label-primary)}',
+      '.st-drawer-close{appearance:none;border:0;background:transparent;color:var(--dsw-alias-label-secondary);',
+      'font-size:18px;line-height:20px;width:28px;height:28px;border-radius:8px;cursor:pointer}',
+      '.st-drawer-close:hover{background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary)}',
+      '.st-drawer-body{flex:1;overflow:auto;padding:6px 16px 24px}',
+      '.st-set-group{padding:10px 0 6px;border-bottom:.5px solid var(--dsw-alias-border-l1)}',
+      '.st-set-group:last-of-type{border-bottom:0}',
+      '.st-set-group-title{margin:0 0 4px;font-size:12px;line-height:18px;font-weight:600;color:var(--dsw-alias-label-secondary)}',
+      '.st-set-row{display:flex;gap:12px;align-items:flex-start;padding:9px 0}',
+      '.st-set-row+.st-set-row{border-top:.5px solid var(--dsw-alias-border-l1)}',
+      '.st-set-main{flex:1;min-width:0}',
+      '.st-set-label{font-size:13px;line-height:18px;color:var(--dsw-alias-label-primary)}',
+      '.st-set-hint{margin-top:2px;font-size:11px;line-height:16px;color:var(--dsw-alias-label-secondary)}',
+      '.st-set-store{margin-top:3px;font-size:10.5px;line-height:15px;color:var(--dsw-alias-label-tertiary);font-family:Consolas,"Cascadia Mono",monospace}',
+      '.st-set-actions{flex:none;display:flex;align-items:center;gap:8px;padding-top:1px}',
+      '.st-scope{font-size:10.5px;line-height:16px;padding:1px 7px;border-radius:999px;',
+      'border:.5px solid var(--dsw-alias-border-l2);color:var(--dsw-alias-label-secondary);white-space:nowrap}',
+      '.st-scope[data-scope=session]{color:var(--dsw-alias-state-business-primary);',
+      'border-color:color-mix(in srgb,var(--dsw-alias-state-business-primary) 45%,transparent)}',
+      '.st-switch{appearance:none;position:relative;width:36px;height:20px;padding:0;border:0;border-radius:999px;',
+      'background:var(--dsw-alias-border-l2);cursor:pointer;flex:none;transition:background .14s ease}',
+      '.st-switch::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;',
+      'background:#fff;transition:left .14s ease;box-shadow:0 1px 2px rgba(0,0,0,.35)}',
+      '.st-switch[aria-checked=true]{background:var(--dsw-alias-brand-primary)}',
+      '.st-switch[aria-checked=true]::after{left:18px}',
+      '.st-switch:disabled{opacity:.45;cursor:default}',
+      '.st-switch:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}',
+      '.st-seg{display:inline-flex;gap:2px;padding:2px;border-radius:8px;background:var(--dsw-alias-bg-layer-2)}',
+      '.st-seg button{appearance:none;border:0;background:transparent;font:inherit;font-size:11.5px;line-height:18px;',
+      'height:22px;padding:0 8px;border-radius:6px;cursor:pointer;color:var(--dsw-alias-label-secondary)}',
+      '.st-seg button[aria-pressed=true]{background:color-mix(in srgb,var(--dsw-alias-brand-primary) 16%,transparent);',
+      'color:var(--dsw-alias-brand-primary);font-weight:600}',
+      '.st-seg button:disabled{opacity:.45;cursor:default}',
+      '.st-drawer-note{margin:14px 0 0;font-size:11px;line-height:16px;color:var(--dsw-alias-label-tertiary)}',
       '.st-link-note{margin:0 0 12px;padding:8px 10px;border-radius:var(--dsw-radius-md,8px);',
       'background:var(--dsw-alias-bg-layer-2);font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}',
       '.st-st{margin-top:18px;display:flex;flex-direction:column;gap:10px}',
@@ -1176,6 +1266,30 @@ window.__ModuleLoader__.load({
       return notes
     }
 
+    /** Gear glyph for the settings drawer. */
+    function GearIcon() {
+      return h('svg', { viewBox: '0 0 16 16', fill: 'none', 'aria-hidden': 'true' },
+        h('circle', { cx: 8, cy: 8, r: 2.4, stroke: 'currentColor', strokeWidth: 1.3 }),
+        h('path', {
+          d: 'M8 1.8v1.6M8 12.6v1.6M1.8 8h1.6M12.6 8h1.6M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M12.4 3.6l-1.1 1.1M4.7 11.3l-1.1 1.1',
+          stroke: 'currentColor',
+          strokeWidth: 1.3,
+          strokeLinecap: 'round',
+        }))
+    }
+
+    /** Gear glyph for the settings drawer. */
+    function GearIcon() {
+      return h('svg', { viewBox: '0 0 16 16', fill: 'none', 'aria-hidden': 'true' },
+        h('circle', { cx: 8, cy: 8, r: 2.4, stroke: 'currentColor', strokeWidth: 1.3 }),
+        h('path', {
+          d: 'M8 1.8v1.6M8 12.6v1.6M1.8 8h1.6M12.6 8h1.6M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M12.4 3.6l-1.1 1.1M4.7 11.3l-1.1 1.1',
+          stroke: 'currentColor',
+          strokeWidth: 1.3,
+          strokeLinecap: 'round',
+        }))
+    }
+
     /** Small document glyph for the "has a session note" marker. */
     function NoteIcon() {
       return h('svg', { viewBox: '0 0 16 16', fill: 'none', 'aria-hidden': 'true' },
@@ -1571,6 +1685,14 @@ window.__ModuleLoader__.load({
       const notepadNotes = useNotepadNotes()
       const [activeChip, setActiveChip] = useState('all')
       const [boxCollapsed, setBoxCollapsed] = useState({})
+      const [drawerOpen, setDrawerOpen] = useState(false)
+      const gearRef = React.useRef(null)
+
+      const closeDrawer = useCallback(() => {
+        setDrawerOpen(false)
+        const gear = gearRef.current
+        if (gear !== null && typeof gear.focus === 'function') gear.focus({ preventScroll: true })
+      }, [])
 
       const rows = useMemo(() => {
         const todos = todosState.todos
@@ -1752,6 +1874,7 @@ window.__ModuleLoader__.load({
       }
 
       return h('div', { className: 'st-page' },
+        drawerOpen ? h(SettingsDrawer, { ctx, onClose: closeDrawer }) : null,
         h('header', { className: 'st-head' },
           h('div', { className: 'st-head-main' },
             h('h1', { className: 'st-title' }, t('page.title')),
@@ -1801,7 +1924,16 @@ window.__ModuleLoader__.load({
                 'aria-pressed': showArchived,
                 onClick: () => setShowArchived((value) => !value),
               }, showArchived ? t('page.hideArchived') : t('page.showArchived'))
-              : null)),
+              : null,
+            h('button', {
+              type: 'button',
+              className: 'st-gear',
+              'aria-label': t('drawer.open'),
+              title: t('drawer.open'),
+              'aria-expanded': drawerOpen,
+              ref: gearRef,
+              onClick: () => setDrawerOpen(true),
+            }, h(GearIcon)))),
         h('div', { className: 'st-scroll' },
           todosState.status === 'error'
             ? h('div', { className: 'st-notice' }, t('error.load'))
@@ -2113,6 +2245,393 @@ window.__ModuleLoader__.load({
             h('div', null, row.label),
             row.detail === '' || row.status === 'run' ? null : h('div', { className: 'st-st-detail' }, row.detail)),
           h('span', { className: 'st-st-badge', 'data-status': row.status }, statusText(row.status))))))
+    }
+
+    /* ------------------------------------------------------------------ *
+     * Settings drawer (gear on the Todo page header)
+     * ------------------------------------------------------------------ */
+
+    const NOTIFY_WATCH_ENDPOINT = '/session-notify/watch'
+    const NOTIFY_MODE_ENDPOINT = '/session-notify/mode'
+    const NOTIFY_SETTINGS_ENDPOINT = '/session-notify/settings'
+
+    /** The session the app currently shows, as far as the client can tell. */
+    function readCurrentSessionId() {
+      try {
+        const raw = localStorage.getItem('dsh.sessions.current')
+        if (typeof raw !== 'string' || raw === '') return ''
+        const parsed = JSON.parse(raw)
+        const id = parsed?.sessionId ?? parsed?.state?.sessionId ?? parsed?.value?.sessionId
+        return typeof id === 'string' ? id : ''
+      } catch {
+        return ''
+      }
+    }
+
+    /**
+     * Session-notify's optional reminder state. The block only renders when the
+     * peer answers; mode and defaults light up once its 0.5.0 routes exist.
+     */
+    function createReminderStore() {
+      let state = {
+        status: 'idle',
+        available: false,
+        capability: false,
+        sessionId: '',
+        watching: false,
+        mode: 'once',
+        defaultWatch: false,
+        defaultMode: 'once',
+        saving: null,
+      }
+      const listeners = new Set()
+      let inflight = null
+
+      function publish(next) {
+        state = next
+        for (const listener of listeners) listener()
+      }
+
+      async function call(url, options) {
+        const controller = typeof AbortController === 'function' ? new AbortController() : null
+        let timer = null
+        if (controller !== null) {
+          timer = setTimeout(() => {
+            try {
+              controller.abort()
+            } catch {
+              /* already aborted */
+            }
+          }, LINK_TIMEOUT_MS)
+        }
+        try {
+          const response = await fetch(url, Object.assign({ cache: 'no-store' }, options, {
+            signal: controller === null ? undefined : controller.signal,
+          }))
+          const payload = await response.json().catch(() => null)
+          if (response.ok !== true || payload === null) return null
+          return payload
+        } catch {
+          return null
+        } finally {
+          if (timer !== null) clearTimeout(timer)
+        }
+      }
+
+      function refresh(sessionId) {
+        if (inflight !== null) return inflight
+        inflight = (async () => {
+          try {
+            const list = await call(NOTIFY_ENDPOINT, { headers: { accept: 'application/json' } })
+            if (list === null || list.ok !== true || list.watched === null || typeof list.watched !== 'object') {
+              publish(Object.assign({}, state, { status: 'ready', available: false, sessionId, capability: false, saving: null }))
+              return
+            }
+            const entry = sessionId === '' ? undefined : list.watched[sessionId]
+            const settings = await call(NOTIFY_SETTINGS_ENDPOINT, { headers: { accept: 'application/json' } })
+            const capability = settings !== null && settings.ok === true
+              && typeof settings.defaultWatch === 'boolean'
+            publish({
+              status: 'ready',
+              available: true,
+              capability,
+              sessionId,
+              watching: entry !== undefined && entry !== null,
+              mode: entry !== undefined && entry !== null && entry.mode === 'always' ? 'always' : 'once',
+              defaultWatch: capability && settings.defaultWatch === true,
+              defaultMode: capability && settings.defaultMode === 'always' ? 'always' : 'once',
+              saving: null,
+            })
+          } finally {
+            inflight = null
+          }
+        })()
+        return inflight
+      }
+
+      async function setWatch(on) {
+        if (state.available !== true || state.sessionId === '' || state.saving !== null) return
+        const previous = state.watching
+        publish(Object.assign({}, state, { watching: on === true, saving: 'watch' }))
+        const result = await call(NOTIFY_WATCH_ENDPOINT, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', accept: 'application/json' },
+          body: JSON.stringify({ sessionId: state.sessionId, on: on === true }),
+        })
+        if (result === null || result.ok !== true) {
+          publish(Object.assign({}, state, { watching: previous, saving: null }))
+          return
+        }
+        publish(Object.assign({}, state, { watching: result.watching === true, saving: null }))
+      }
+
+      async function setMode(mode) {
+        if (state.capability !== true || state.watching !== true || state.saving !== null) return
+        const next = mode === 'always' ? 'always' : 'once'
+        if (next === state.mode) return
+        const previous = state.mode
+        publish(Object.assign({}, state, { mode: next, saving: 'mode' }))
+        const result = await call(NOTIFY_MODE_ENDPOINT, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', accept: 'application/json' },
+          body: JSON.stringify({ sessionId: state.sessionId, mode: next }),
+        })
+        if (result === null || result.ok !== true) {
+          publish(Object.assign({}, state, { mode: previous, saving: null }))
+          return
+        }
+        publish(Object.assign({}, state, { mode: result.mode === 'always' ? 'always' : 'once', saving: null }))
+      }
+
+      async function setDefaults(patch) {
+        if (state.capability !== true || state.saving !== null) return
+        const previous = { defaultWatch: state.defaultWatch, defaultMode: state.defaultMode }
+        const next = {
+          defaultWatch: patch.defaultWatch === undefined ? previous.defaultWatch : patch.defaultWatch === true,
+          defaultMode: patch.defaultMode === undefined ? previous.defaultMode : (patch.defaultMode === 'always' ? 'always' : 'once'),
+        }
+        publish(Object.assign({}, state, next, { saving: 'defaults' }))
+        const result = await call(NOTIFY_SETTINGS_ENDPOINT, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', accept: 'application/json' },
+          body: JSON.stringify(next),
+        })
+        if (result === null || result.ok !== true) {
+          publish(Object.assign({}, state, previous, { saving: null }))
+          return
+        }
+        publish(Object.assign({}, state, {
+          defaultWatch: result.defaultWatch === true,
+          defaultMode: result.defaultMode === 'always' ? 'always' : 'once',
+          saving: null,
+        }))
+      }
+
+      return {
+        getSnapshot: () => state,
+        subscribe(listener) {
+          listeners.add(listener)
+          return () => {
+            listeners.delete(listener)
+          }
+        },
+        refresh,
+        setWatch,
+        setMode,
+        setDefaults,
+      }
+    }
+
+    const reminderStore = createReminderStore()
+
+    function useReminderState() {
+      return React.useSyncExternalStore(reminderStore.subscribe, reminderStore.getSnapshot, reminderStore.getSnapshot)
+    }
+
+    /** One switch, shared by every drawer row. */
+    function DrawerSwitch({ checked, disabled, label, onChange }) {
+      return h('button', {
+        type: 'button',
+        className: 'st-switch',
+        role: 'switch',
+        'aria-checked': checked === true,
+        'aria-label': label,
+        disabled: disabled === true,
+        onClick: () => onChange(checked !== true),
+      })
+    }
+
+    /** One row: label, hint, storage note, scope badge, controls. */
+    function DrawerRow({ label, hint, store, scope, scopeKind, children }) {
+      return h('div', { className: 'st-set-row' },
+        h('div', { className: 'st-set-main' },
+          h('div', { className: 'st-set-label' }, label),
+          hint === undefined ? null : h('div', { className: 'st-set-hint' }, hint),
+          store === undefined ? null : h('div', { className: 'st-set-store' }, store)),
+        h('div', { className: 'st-set-actions' },
+          scope === undefined ? null : h('span', { className: 'st-scope', 'data-scope': scopeKind ?? 'global' }, scope),
+          children))
+    }
+
+    /** Two-state segment for once / always. */
+    function ModeSegment({ value, disabled, onChange, once, always }) {
+      return h('span', { className: 'st-seg', role: 'group' },
+        h('button', {
+          type: 'button',
+          'aria-pressed': value !== 'always',
+          disabled: disabled === true,
+          onClick: () => onChange('once'),
+        }, once),
+        h('button', {
+          type: 'button',
+          'aria-pressed': value === 'always',
+          disabled: disabled === true,
+          onClick: () => onChange('always'),
+        }, always))
+    }
+
+    /** The right-hand settings drawer; only mounted while it is open. */
+    function SettingsDrawer({ ctx, onClose }) {
+      const locale = ctx.locale ?? readService(ctx, 'locale')
+      useLocaleRevision(locale)
+      const t = locale.bind(NS)
+      const link = useLinkState()
+      const reminder = useReminderState()
+      const panelRef = React.useRef(null)
+
+      const available = link.notifyAvailable === true
+
+      useEffect(() => {
+        void linkStore.refresh()
+        void reminderStore.refresh(readCurrentSessionId())
+      }, [])
+
+      useEffect(() => {
+        const panel = panelRef.current
+        if (panel === null) return undefined
+        const first = panel.querySelector('button:not([disabled]), [href], input, [tabindex]:not([tabindex="-1"])')
+        if (first !== null) first.focus({ preventScroll: true })
+        return undefined
+      }, [])
+
+      const onPanelKeyDown = (event) => {
+        if (event.key === 'Escape') {
+          event.preventDefault()
+          onClose()
+          return
+        }
+        if (event.key !== 'Tab') return
+        const panel = event.currentTarget
+        const list = panel.querySelectorAll('button:not([disabled]), [href], input, [tabindex]:not([tabindex="-1"])')
+        if (list.length === 0) return
+        const head = list[0]
+        const tail = list[list.length - 1]
+        if (event.shiftKey && document.activeElement === head) {
+          event.preventDefault()
+          tail.focus()
+        } else if (!event.shiftKey && document.activeElement === tail) {
+          event.preventDefault()
+          head.focus()
+        }
+      }
+
+      const sessionReady = reminder.sessionId !== ''
+      const modeHint = reminder.capability !== true
+        ? t('drawer.modeOld')
+        : (reminder.watching !== true ? t('drawer.modeNeedsWatch') : undefined)
+
+      return h('div', { className: 'st-drawer', role: 'presentation' },
+        h('div', {
+          className: 'st-drawer-backdrop',
+          role: 'presentation',
+          onClick: onClose,
+        }),
+        h('aside', {
+          className: 'st-drawer-panel',
+          role: 'dialog',
+          'aria-modal': 'true',
+          'aria-label': available ? t('drawer.reminderTitle') : t('drawer.title'),
+          tabIndex: -1,
+          ref: panelRef,
+          onKeyDown: onPanelKeyDown,
+        },
+          h('header', { className: 'st-drawer-head' },
+            h('span', { className: 'st-drawer-title' }, available ? t('drawer.reminderTitle') : t('drawer.title')),
+            h('button', {
+              type: 'button',
+              className: 'st-drawer-close',
+              'aria-label': t('drawer.close'),
+              onClick: onClose,
+            }, '\u00d7')),
+          h('div', { className: 'st-drawer-body' },
+            h('div', { className: 'st-set-group' },
+              h('div', { className: 'st-set-group-title' }, t('drawer.todoTitle')),
+              h(DrawerRow, {
+                label: t('drawer.autoWatch'),
+                hint: t('drawer.autoWatchHint'),
+                store: 'session-todos.json · autoWatch',
+                scope: t('scope.global'),
+                scopeKind: 'global',
+              }, h(DrawerSwitch, {
+                checked: link.autoWatch === true,
+                disabled: link.settingsAvailable !== true || link.saving === 'autoWatch',
+                label: t('drawer.autoWatch'),
+                onChange: () => {
+                  void linkStore.toggleAutoWatch()
+                },
+              })),
+              h(DrawerRow, {
+                label: t('drawer.reopen'),
+                hint: t('drawer.reopenHint'),
+                store: 'session-todos.json · reopenOnResume',
+                scope: t('scope.global'),
+                scopeKind: 'global',
+              }, h(DrawerSwitch, {
+                checked: link.reopenOnResume === true,
+                disabled: link.settingsAvailable !== true || link.saving === 'reopenOnResume',
+                label: t('drawer.reopen'),
+                onChange: () => {
+                  void linkStore.toggleReopen()
+                },
+              }))),
+            available
+              ? h('div', { className: 'st-set-group' },
+                h('div', { className: 'st-set-group-title' }, t('drawer.reminderTitle')),
+                h(DrawerRow, {
+                  label: t('drawer.watch'),
+                  hint: sessionReady ? t('drawer.watchHint') : t('drawer.noSession'),
+                  store: 'notify watch · POST /session-notify/watch',
+                  scope: t('scope.session'),
+                  scopeKind: 'session',
+                }, h(DrawerSwitch, {
+                  checked: reminder.watching === true,
+                  disabled: !sessionReady || reminder.saving === 'watch',
+                  label: t('drawer.watch'),
+                  onChange: (next) => {
+                    void reminderStore.setWatch(next)
+                  },
+                })),
+                h(DrawerRow, {
+                  label: t('drawer.mode'),
+                  hint: modeHint,
+                  store: "POST /session-notify/mode { mode: 'once' | 'always' }",
+                  scope: t('scope.session'),
+                  scopeKind: 'session',
+                }, h(ModeSegment, {
+                  value: reminder.mode,
+                  disabled: reminder.capability !== true || reminder.watching !== true || reminder.saving === 'mode',
+                  onChange: (mode) => {
+                    void reminderStore.setMode(mode)
+                  },
+                  once: t('drawer.once'),
+                  always: t('drawer.always'),
+                })),
+                h(DrawerRow, {
+                  label: t('drawer.defaults'),
+                  hint: reminder.capability !== true ? t('drawer.modeOld') : t('drawer.defaultsHint'),
+                  store: 'GET/POST /session-notify/settings',
+                  scope: t('scope.global'),
+                  scopeKind: 'global',
+                },
+                  h(DrawerSwitch, {
+                    checked: reminder.defaultWatch === true,
+                    disabled: reminder.capability !== true || reminder.saving === 'defaults',
+                    label: t('drawer.defaults'),
+                    onChange: (next) => {
+                      void reminderStore.setDefaults({ defaultWatch: next })
+                    },
+                  }),
+                  h(ModeSegment, {
+                    value: reminder.defaultMode,
+                    disabled: reminder.capability !== true || reminder.defaultWatch !== true || reminder.saving === 'defaults',
+                    onChange: (mode) => {
+                      void reminderStore.setDefaults({ defaultMode: mode })
+                    },
+                    once: t('drawer.once'),
+                    always: t('drawer.always'),
+                  })))
+              : null,
+            h('p', { className: 'st-drawer-note' }, t('drawer.note')))))
     }
 
     /* ------------------------------------------------------------------ *
