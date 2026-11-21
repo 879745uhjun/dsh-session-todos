@@ -896,6 +896,14 @@ test('the self-test section belongs to this plugin only', () => {
   assert.equal(other.length, 0, 'nothing renders on another plugin page')
 })
 
+test('the self-test accepts the item subject form', () => {
+  const { registrations } = boot()
+  const entry = registrations.find((item) => (item.definition?.id ?? '') === 'dsh-session-todos.selftest')
+  const renders = (subject) => renderComponent(entry.component, { subject }).length > 0
+  assert.equal(renders({ kind: 'item', id: 'include:dsh-session-todos' }), true, 'include:dsh-session-todos renders')
+  assert.equal(renders({ kind: 'item', id: 'include:dsh-session-stars' }), false, 'include:dsh-session-stars stays empty')
+})
+
 test('a self-test run passes every check and copies Markdown', async () => {
   const { registrations } = boot()
   await settle()

@@ -2029,6 +2029,21 @@ window.__ModuleLoader__.load({
 
     const PACKAGE_NAME = 'dsh-session-todos'
     const CHECK_TIMEOUT_MS = 2000
+
+    /**
+     * Which plugin a detail-page section belongs to. The host passes either a
+     * bundle (`{ kind: 'bundle', pkg: { name } }`) or an item
+     * (`{ kind: 'item', id }`, where the id may be prefixed with `include:`).
+     */
+    function subjectPluginName(subject) {
+      if (subject === null || typeof subject !== 'object') return undefined
+      if (subject.kind === 'bundle') return subject.pkg?.name
+      if (subject.kind === 'item' && typeof subject.id === 'string') {
+        const id = subject.id
+        if (id === PACKAGE_NAME || id === 'include:' + PACKAGE_NAME) return PACKAGE_NAME
+      }
+      return undefined
+    }
     const HEALTH_ENDPOINT = '/session-todos/health'
 
     /** One request under the section's budget; never throws. */
@@ -2147,8 +2162,7 @@ window.__ModuleLoader__.load({
       const [note, setNote] = useState('')
       const budget = typeof timeoutMs === 'number' && timeoutMs > 0 ? timeoutMs : CHECK_TIMEOUT_MS
       const checks = selfTestChecks(t, budget)
-      const pkg = subject !== null && typeof subject === 'object' ? subject.pkg : undefined
-      const mine = pkg !== undefined && pkg !== null && typeof pkg === 'object' && pkg.name === PACKAGE_NAME
+      const mine = subjectPluginName(subject) === PACKAGE_NAME
       if (!mine) return null
 
       const counts = rows.reduce((acc, row) => {
