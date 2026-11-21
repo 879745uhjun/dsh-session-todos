@@ -78,7 +78,7 @@ window.__ModuleLoader__.load({
       'drawer.autoWatch': 'Auto-watch todos',
       'drawer.autoWatchHint': 'Watch a session when its todo is opened; finishing or clearing it only releases watches this plugin created.',
       'drawer.reopen': 'Reopen on resume',
-      'drawer.reopenHint': 'Checked todos reset to to-do when their session starts working again, which also re-watches them.',
+      'drawer.reopenHint': 'Checked todos reset to to-do when their session starts working again, which also re-watches them. A turn that completes normally checks them back; error, aborted, or interrupted turns leave them alone.',
       'drawer.watch': 'Remind me when it finishes',
       'drawer.watchHint': 'Ping me when this session finishes a turn.',
       'drawer.noSession': 'Open a session first',
@@ -187,7 +187,7 @@ window.__ModuleLoader__.load({
       'drawer.autoWatch': '待办自动关注',
       'drawer.autoWatchHint': '勾成待办时自动关注该会话；完成或清除时只取消本插件建立的关注。',
       'drawer.reopen': '会话重新开工时取消完成',
-      'drawer.reopenHint': '会话重新开工时把已勾选的待办重置为待办，并因此重新触发关注。',
+      'drawer.reopenHint': '会话重新开工时把已勾选的待办重置为待办，并因此重新触发关注。任务正常完成后会重新勾回已完成；异常中断不会。',
       'drawer.watch': '结束时提醒我',
       'drawer.watchHint': '这个会话跑完一轮就提醒。',
       'drawer.noSession': '先在侧边栏打开一个会话',
@@ -1127,7 +1127,7 @@ window.__ModuleLoader__.load({
           if (!running.has(sessionId) || running.get(sessionId) === true) continue
           const entry = todosStore.getSnapshot().todos[sessionId]
           if (entry === undefined || entry.done !== true) continue
-          void todosStore.set(sessionId, { done: false, title: titleOf(ctx, sessionId) })
+          void todosStore.set(sessionId, { done: false, title: titleOf(ctx, sessionId), source: 'resume' })
         }
         for (const [sessionId, isRunning] of current) running.set(sessionId, isRunning)
         for (const sessionId of [...running.keys()]) {

@@ -97,8 +97,10 @@ function normalizeEntry(value) {
   const updatedAt = toTimestamp(value.updatedAt)
   const createdAt = toTimestamp(value.createdAt) || updatedAt
   const doneAt = done ? toTimestamp(value.doneAt) || updatedAt : 0
-  if (!done && note === '' && priority === DEFAULT_PRIORITY && dueAt === 0) return null
-  return { done, note, priority, dueAt, title, createdAt, updatedAt, doneAt }
+  const reopenedByRun = !done && value.reopenedByRun === true
+  const reopenedAt = reopenedByRun ? toTimestamp(value.reopenedAt) || updatedAt : 0
+  if (!done && !reopenedByRun && note === '' && priority === DEFAULT_PRIORITY && dueAt === 0) return null
+  return { done, note, priority, dueAt, title, createdAt, updatedAt, doneAt, reopenedByRun, reopenedAt }
 }
 
 /** Copy and validate the sessions this plugin watched on the user's behalf. */
@@ -142,6 +144,8 @@ function snapshotTodos(todos) {
       createdAt: value.createdAt,
       updatedAt: value.updatedAt,
       doneAt: value.doneAt,
+      reopenedByRun: value.reopenedByRun === true,
+      reopenedAt: value.reopenedAt,
     }
   }
   return copy
@@ -166,6 +170,8 @@ function todoRows(todos) {
       createdAt: value.createdAt,
       updatedAt: value.updatedAt,
       doneAt: value.doneAt,
+      reopenedByRun: value.reopenedByRun === true,
+      reopenedAt: value.reopenedAt,
     }))
     .sort((left, right) =>
       Number(left.done) - Number(right.done)
@@ -371,6 +377,15 @@ function createStore(file, log) {
       if (patch.done !== undefined) {
         next.done = patch.done
         next.doneAt = patch.done ? now : 0
+        if (patch.done === true) {
+          // An explicit check wins over any pending resume marker.
+          next.reopenedByRun = false
+          next.reopenedAt = 0
+        } else if (patch.source === 'resume' && reopenOnResume) {
+          // Only the resume watcher sets this, so a manual uncheck never comes back.
+          next.reopenedByRun = true
+          next.reopenedAt = now
+        }
       }
       if (patch.note !== undefined) next.note = normalizeNote(patch.note)
       if (patch.priority !== undefined && PRIORITIES.includes(patch.priority)) next.priority = patch.priority
@@ -385,6 +400,20 @@ function createStore(file, log) {
       emit()
       reconcile(sessionId, patch.done === false)
       return snapshotTodos(todos)
+    },
+    /** Put back the check a resume removed, once that turn completed normally. */
+    async completeReopened(sessionId) {
+      await load()
+      const entry = todos[sessionId]
+      if (entry === undefined || entry.reopenedByRun !== true || entry.done === true) return false
+      const now = Date.now()
+      const next = normalizeEntry({ ...entry, done: true, doneAt: now, reopenedByRun: false, reopenedAt: 0, updatedAt: now })
+      if (next === null) return false
+      todos[sessionId] = next
+      await persist()
+      emit()
+      reconcile(sessionId)
+      return true
     },
     /** Forget one session's todo entirely. */
     async clear(sessionId) {
@@ -492,6 +521,8 @@ function readMutation(payload) {
     if (payload.title.length > MAX_TITLE_LENGTH) return { ok: false, error: 'title must be at most ' + MAX_TITLE_LENGTH + ' characters' }
     patch.title = payload.title
   }
+  // Only the resume watcher sends this; the agent tool never does.
+  if (payload.source === 'resume') patch.source = 'resume'
   if (Object.keys(patch).length === 0) return { ok: false, error: 'nothing to change' }
   return { ok: true, sessionId: session.sessionId, action: 'set', patch }
 }
@@ -877,6 +908,21 @@ export function apply(ctx) {
     toolRegistered = true
     return dispose
   }, 'session-todos: agent tool')
+
+  // A turn that completes normally puts back the check that reopening removed;
+  // error, aborted, or interrupted turns leave the state alone.
+  ctx.effect(() => {
+    if (typeof ctx.on !== 'function') return undefined
+    return ctx.on('session/event', (session, event) => {
+      if (event?.type !== 'turn/end') return
+      const reason = event.data?.reason
+      const kind = typeof reason?.kind === 'string' ? reason.kind : 'completed'
+      if (kind !== 'completed') return
+      const sessionId = session?.id
+      if (typeof sessionId !== 'string' || sessionId === '') return
+      void store.completeReopened(sessionId)
+    })
+  }, 'session-todos: completed turns')
 
   // The browser and desktop compositions mount a web server; other surfaces
   // still get the file-backed tool without an HTTP route.

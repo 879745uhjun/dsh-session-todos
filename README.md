@@ -97,6 +97,8 @@ The gear on the right of the Todo page header opens the settings drawer (about 3
 
 The reminder group only appears when `dsh-session-notify` answers; the mode row stays disabled until the reminder is on, and the default's once/every control stays disabled while its switch is off. The two quick switches in the header share the same state as the drawer rows, so either side updates the other immediately.
 
+When the turn that reopened the todo **completes normally** (`kind: 'completed'`), the plugin checks back the todo it unchecked for that run; `error`, `aborted`, interrupted, or window-closed turns leave it unchecked. A todo you unchecked yourself carries no marker, so it is never checked back automatically. The behaviour follows the **Reopen on resume** switch: while it is off, nothing is marked and nothing comes back.
+
 ## Self-test
 
 The plugin detail page (Settings → Plugins → dsh-session-todos) ends with a **Self-test** section that **only fires requests when you press “Run self-test”**:

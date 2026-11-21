@@ -11,6 +11,7 @@ import { apply, name } from '../index.js'
 function createHost(file) {
   const tools = []
   const routes = new Map()
+  const handlers = new Map()
   const ctx = {
     get: (key) => (key === 'dshHomePath' ? (suffix) => join(file.dir, suffix) : undefined),
     effect: (factory) => {
@@ -21,6 +22,15 @@ function createHost(file) {
         tools.push(tool)
         return () => {}
       },
+    },
+    on(event, handler) {
+      const list = handlers.get(event) ?? []
+      list.push(handler)
+      handlers.set(event, list)
+      return () => {
+        const index = list.indexOf(handler)
+        if (index >= 0) list.splice(index, 1)
+      }
     },
     inject: (services, run) => {
       const scope = {
@@ -38,7 +48,32 @@ function createHost(file) {
     },
   }
   apply(ctx)
-  return { tools, routes }
+  return {
+    tools,
+    routes,
+    emit(event, session, payload) {
+      for (const handler of handlers.get(event) ?? []) handler(session, payload)
+    },
+  }
+}
+
+/** Write one todo through the Host route and return the stored map. */
+async function setTodo(host, sessionId, patch) {
+  const response = await call(host.routes.get('/session-todos'), 'POST', Object.assign({ action: 'set', sessionId }, patch))
+  assert.equal(response.status, 200, JSON.stringify(response.json))
+  return response.json.todos
+}
+
+/** Read one stored todo back through the Host route. */
+async function readTodo(host, sessionId) {
+  const response = await call(host.routes.get('/session-todos'), 'GET')
+  return response.json.todos[sessionId]
+}
+
+/** Deliver one durable turn end and let the handler finish. */
+async function emitTurnEnd(host, sessionId, kind) {
+  host.emit('session/event', { id: sessionId }, { type: 'turn/end', data: { reason: { kind } } })
+  await new Promise((resolve) => setImmediate(resolve))
 }
 
 /** One response stub that keeps the status, headers, and body. */
@@ -262,6 +297,83 @@ test('the browser route refuses invalid and cross-site payloads', async (t) => {
 
   const wrongMethod = await call(handler, 'DELETE')
   assert.equal(wrongMethod.status, 405)
+})
+
+test('a completed turn puts back the check a resume removed', async (t) => {
+  const host = createHost(createHome(t))
+  await call(host.routes.get('/session-todos/settings'), 'POST', { reopenOnResume: true })
+  const settingsAfter = await call(host.routes.get('/session-todos/settings'), 'GET')
+  assert.equal(settingsAfter.json.reopenOnResume, true, 'the switch persists')
+  await setTodo(host, 'session-a', { done: true, note: 'remember' })
+  await setTodo(host, 'session-a', { done: false, source: 'resume' })
+  let entry = await readTodo(host, 'session-a')
+  assert.equal(entry.done, false)
+  assert.equal(entry.reopenedByRun, true, 'the resume marker is recorded')
+
+  await emitTurnEnd(host, 'session-a', 'completed')
+  entry = await readTodo(host, 'session-a')
+  assert.equal(entry.done, true, 'the check comes back')
+  assert.equal(entry.reopenedByRun, false, 'the marker is cleared')
+})
+
+test('an error turn leaves the reopened todo unchecked', async (t) => {
+  const host = createHost(createHome(t))
+  await call(host.routes.get('/session-todos/settings'), 'POST', { reopenOnResume: true })
+  await setTodo(host, 'session-a', { done: true, note: 'remember' })
+  await setTodo(host, 'session-a', { done: false, source: 'resume' })
+  await emitTurnEnd(host, 'session-a', 'error')
+  const entry = await readTodo(host, 'session-a')
+  assert.equal(entry.done, false)
+  assert.equal(entry.reopenedByRun, true)
+})
+
+test('an aborted turn leaves the reopened todo unchecked', async (t) => {
+  const host = createHost(createHome(t))
+  await call(host.routes.get('/session-todos/settings'), 'POST', { reopenOnResume: true })
+  await setTodo(host, 'session-a', { done: true, note: 'remember' })
+  await setTodo(host, 'session-a', { done: false, source: 'resume' })
+  await emitTurnEnd(host, 'session-a', 'aborted')
+  const entry = await readTodo(host, 'session-a')
+  assert.equal(entry.done, false)
+})
+
+test('a manual uncheck is not restored by a completed turn', async (t) => {
+  const host = createHost(createHome(t))
+  await call(host.routes.get('/session-todos/settings'), 'POST', { reopenOnResume: true })
+  await setTodo(host, 'session-a', { done: true, note: 'remember' })
+  await setTodo(host, 'session-a', { done: false })
+  const before = await readTodo(host, 'session-a')
+  assert.equal(before.reopenedByRun, false, 'a manual uncheck carries no marker')
+  await emitTurnEnd(host, 'session-a', 'completed')
+  const entry = await readTodo(host, 'session-a')
+  assert.equal(entry.done, false, 'the person meant it')
+})
+
+test('reopenOnResume off never records the marker', async (t) => {
+  const host = createHost(createHome(t))
+  await setTodo(host, 'session-a', { done: true, note: 'remember' })
+  await setTodo(host, 'session-a', { done: false, source: 'resume' })
+  const before = await readTodo(host, 'session-a')
+  assert.equal(before.reopenedByRun, false, 'the switch is off')
+  await emitTurnEnd(host, 'session-a', 'completed')
+  const entry = await readTodo(host, 'session-a')
+  assert.equal(entry.done, false)
+})
+
+test('a repeated turn end only restores once', async (t) => {
+  const host = createHost(createHome(t))
+  await call(host.routes.get('/session-todos/settings'), 'POST', { reopenOnResume: true })
+  await setTodo(host, 'session-a', { done: true, note: 'remember' })
+  await setTodo(host, 'session-a', { done: false, source: 'resume' })
+  await emitTurnEnd(host, 'session-a', 'completed')
+  assert.equal((await readTodo(host, 'session-a')).done, true)
+
+  // A second copy of the same event finds no marker, so a later manual uncheck
+  // is not undone by it either.
+  await setTodo(host, 'session-a', { done: false })
+  await emitTurnEnd(host, 'session-a', 'completed')
+  const entry = await readTodo(host, 'session-a')
+  assert.equal(entry.done, false, 'the duplicate event does nothing')
 })
 
 test('the health route reports the registered tool', async (t) => {

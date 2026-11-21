@@ -676,6 +676,7 @@ test('a session that starts working again reopens its done todo', async () => {
     action: 'set',
     done: false,
     title: 'Done session',
+    source: 'resume',
   })
 })
 
