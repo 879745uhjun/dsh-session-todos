@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Readable } from 'node:stream'
@@ -70,10 +70,19 @@ async function readTodo(host, sessionId) {
   return response.json.todos[sessionId]
 }
 
+/** Read the stored file, or null when nothing has been written yet. */
+function readStoreFile(home) {
+  try {
+    return JSON.parse(readFileSync(home.file, 'utf8'))
+  } catch {
+    return null
+  }
+}
+
 /** Deliver one durable turn end and let the handler finish. */
 async function emitTurnEnd(host, sessionId, kind) {
   host.emit('session/event', { id: sessionId }, { type: 'turn/end', data: { reason: { kind } } })
-  await new Promise((resolve) => setImmediate(resolve))
+  await delay(120)
 }
 
 /** One response stub that keeps the status, headers, and body. */
@@ -374,6 +383,95 @@ test('a repeated turn end only restores once', async (t) => {
   await emitTurnEnd(host, 'session-a', 'completed')
   const entry = await readTodo(host, 'session-a')
   assert.equal(entry.done, false, 'the duplicate event does nothing')
+})
+
+test('without a learned origin a tool call skips auto-watch and still succeeds', async (t) => {
+  const home = createHome(t)
+  writeFileSync(home.file, JSON.stringify({
+    version: 2,
+    autoWatch: true,
+    todos: { 'session-a': { done: true, note: 'x', priority: 'normal', dueAt: 0, title: '', createdAt: 1, updatedAt: 1, doneAt: 1 } },
+  }))
+  const host = createHost(home)
+  const calls = []
+  const realFetch = globalThis.fetch
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url, init })
+    return { ok: true, json: async () => ({ ok: true }) }
+  }
+  try {
+    const tool = host.tools.find((candidate) => candidate.name === 'session_todos')
+    const result = await tool.execute({ action: 'set', sessionId: 'session-a', done: false }, {})
+    assert.equal(result.ok, true, 'the tool never fails for want of an origin')
+    await delay(120)
+    assert.equal(calls.length, 0, 'no watch call without an origin')
+  } finally {
+    globalThis.fetch = realFetch
+  }
+})
+
+test('a browser request teaches the loopback origin and stores it', async (t) => {
+  const home = createHome(t)
+  const host = createHost(home)
+  await call(host.routes.get('/session-todos'), 'GET')
+  await delay(120)
+  const saved = readStoreFile(home)
+  assert.equal(saved.origin, 'http://127.0.0.1:64133')
+  assert.ok(saved.originLearnedAt > 0, 'the learning time is recorded')
+})
+
+test('the learned origin survives a restart', async (t) => {
+  const home = createHome(t)
+  writeFileSync(home.file, JSON.stringify({
+    version: 2,
+    autoWatch: true,
+    todos: { 'session-a': { done: true, note: 'x', priority: 'normal', dueAt: 0, title: '', createdAt: 1, updatedAt: 1, doneAt: 1 } },
+  }))
+  const first = createHost(home)
+  await call(first.routes.get('/session-todos'), 'GET')
+  await waitFor(() => readStoreFile(home)?.origin === 'http://127.0.0.1:64133', 'the origin to be stored')
+
+  const second = createHost(home)
+  const calls = []
+  const realFetch = globalThis.fetch
+  globalThis.fetch = async (url) => {
+    calls.push(String(url))
+    return { ok: true, json: async () => ({ ok: true }) }
+  }
+  try {
+    const tool = second.tools.find((candidate) => candidate.name === 'session_todos')
+    await tool.execute({ action: 'set', sessionId: 'session-a', done: false }, {})
+    await waitFor(() => calls.length === 1, 'the watch call after a restart')
+    assert.equal(calls.length, 1, 'the watch call goes out after a restart')
+    assert.equal(calls[0], 'http://127.0.0.1:64133/session-notify/watch')
+  } finally {
+    globalThis.fetch = realFetch
+  }
+})
+
+test('a new port replaces the learned origin', async (t) => {
+  const home = createHome(t)
+  const host = createHost(home)
+  await call(host.routes.get('/session-todos'), 'GET', undefined, { host: '127.0.0.1:64133' })
+  await delay(120)
+  const before = readStoreFile(home)
+  await call(host.routes.get('/session-todos'), 'GET', undefined, { host: '127.0.0.1:7000' })
+  await delay(120)
+  const after = readStoreFile(home)
+  assert.equal(after.origin, 'http://127.0.0.1:7000')
+  assert.ok(after.originLearnedAt >= before.originLearnedAt)
+})
+
+test('a non-loopback origin is ignored', async (t) => {
+  const home = createHome(t)
+  const host = createHost(home)
+  await call(host.routes.get('/session-todos'), 'GET', undefined, { host: '10.1.2.3:9000' })
+  await delay(120)
+  assert.equal(readStoreFile(home), null, 'nothing is persisted from a remote host')
+
+  await call(host.routes.get('/session-todos'), 'GET', undefined, { host: '127.0.0.1:64133' })
+  await delay(120)
+  assert.equal(readStoreFile(home).origin, 'http://127.0.0.1:64133', 'a loopback request still teaches it')
 })
 
 test('the health route reports the registered tool', async (t) => {

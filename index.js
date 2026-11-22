@@ -103,6 +103,24 @@ function normalizeEntry(value) {
   return { done, note, priority, dueAt, title, createdAt, updatedAt, doneAt, reopenedByRun, reopenedAt }
 }
 
+/**
+ * The same-origin base the notify route can be reached on. Only loopback is
+ * accepted: the value is learned from request headers and stored on disk.
+ */
+function loopbackOrigin(value) {
+  if (typeof value !== 'string' || value === '') return ''
+  let parsed
+  try {
+    parsed = new URL(value)
+  } catch {
+    return ''
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return ''
+  const host = parsed.hostname
+  if (host !== '127.0.0.1' && host !== 'localhost' && host !== '[::1]' && host !== '::1') return ''
+  return parsed.origin
+}
+
 /** Copy and validate the sessions this plugin watched on the user's behalf. */
 function normalizeWatchList(raw) {
   const list = []
@@ -191,6 +209,7 @@ function createStore(file, log) {
   let reopenOnResume = false
   const autoWatched = new Set()
   let origin = ''
+  let originLearnedAt = 0
   let loaded = null
   let writeChain = Promise.resolve()
   const listeners = new Set()
@@ -220,6 +239,12 @@ function createStore(file, log) {
         todos = normalizeTodos(parsed?.todos)
         autoWatch = parsed?.autoWatch === true
         reopenOnResume = parsed?.reopenOnResume === true
+        // A request that arrives while loading must not lose its newer value.
+        const learned = loopbackOrigin(parsed?.origin)
+        if (learned !== '' && origin === '') {
+          origin = learned
+          originLearnedAt = toTimestamp(parsed?.originLearnedAt)
+        }
         for (const sessionId of normalizeWatchList(parsed?.autoWatched)) autoWatched.add(sessionId)
       } catch (error) {
         if (error?.code !== 'ENOENT') log('could not read ' + file, error)
@@ -234,6 +259,8 @@ function createStore(file, log) {
       updatedAt: Date.now(),
       autoWatch,
       reopenOnResume,
+      origin,
+      originLearnedAt,
       autoWatched: [...autoWatched].sort(),
       todos,
     }, null, 2)
@@ -304,6 +331,12 @@ function createStore(file, log) {
    */
   function reconcile(sessionId, forceOpen) {
     if (!autoWatch) return
+    if (origin === '') {
+      // No browser request has taught us the server's address yet; the agent
+      // tool path has no request of its own, so skip rather than fail.
+      log('auto-watch skipped: no loopback origin learned yet')
+      return
+    }
     queueWatch(sessionId, async () => {
       if (!autoWatch) return
       const entry = todos[sessionId]
@@ -338,10 +371,27 @@ function createStore(file, log) {
     load,
     snapshot: () => snapshotTodos(todos),
     settings: () => settingsSnapshot(),
-    /** Remember the same-origin base the notify route can be reached on. */
+    /**
+     * Remember the same-origin base the notify route can be reached on. A new
+     * port replaces the old one; a non-loopback value is ignored, and the value
+     * survives restarts so the agent tool can still watch after a reload.
+     */
     setOrigin(value) {
-      if (typeof value !== 'string' || value === '') return
-      origin = value
+      const next = loopbackOrigin(value)
+      if (next === '') return
+      if (next === origin && originLearnedAt > 0) return
+      const stamp = Date.now()
+      origin = next
+      originLearnedAt = stamp
+      // Persist only after the store has loaded: a first request must not write
+      // an empty snapshot over the file it has not read yet.
+      void load().then(() => {
+        if (origin !== next) {
+          origin = next
+          originLearnedAt = stamp
+        }
+        return persist()
+      }, () => {})
     },
     subscribe(listener) {
       listeners.add(listener)
@@ -579,8 +629,10 @@ function createRouteHandler(store, log) {
 }
 
 /** Read-only health probe: which tool this plugin registered, and whether it did. */
-function createHealthHandler(isToolRegistered) {
+function createHealthHandler(store, isToolRegistered) {
   return function handleSessionTodoHealth(request, response) {
+    const host = request.headers.host
+    if (typeof host === 'string' && host !== '') store.setOrigin('http://' + host)
     if (!isAcceptableOrigin(request)) {
       sendJson(response, 403, { ok: false, error: 'cross-origin request refused' })
       return
@@ -685,6 +737,8 @@ function createEventHub(store, log) {
   })
 
   function attach(request, response) {
+    const host = request.headers.host
+    if (typeof host === 'string' && host !== '') store.setOrigin('http://' + host)
     if (closed) {
       sendJson(response, 503, { ok: false, error: 'event stream is shutting down' })
       return
@@ -930,7 +984,7 @@ export function apply(ctx) {
     scope.effect(() => {
       const removeTodos = scope.webServer.register({ kind: 'exact', path: ROUTE, handler: createRouteHandler(store, log) })
       const removeSettings = scope.webServer.register({ kind: 'exact', path: SETTINGS_ROUTE, handler: createSettingsHandler(store, log) })
-      const removeHealth = scope.webServer.register({ kind: 'exact', path: HEALTH_ROUTE, handler: createHealthHandler(() => toolRegistered) })
+      const removeHealth = scope.webServer.register({ kind: 'exact', path: HEALTH_ROUTE, handler: createHealthHandler(store, () => toolRegistered) })
       const removeEvents = scope.webServer.register({ kind: 'exact', path: EVENTS_ROUTE, handler: events.attach })
       return () => {
         removeEvents()

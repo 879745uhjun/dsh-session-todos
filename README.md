@@ -83,6 +83,14 @@ This plugin is installed via `link:`, so **the working tree is production**:
 4. Only replay (or retry) when the remote is genuinely behind;
 5. **Never force-push a shared branch**: a duplicated commit from a mistaken replay is harmless (same content, extra SHA) — leave it or revert it; `force` rewrites a shared ref irreversibly.
 
+### How the same-origin address is learned (and what happens without it)
+
+Auto-watch needs the Host to call `/session-notify/watch` on the same origin. A browser page carries that address, but the **agent tool** path has no request of its own, so:
+
+- any `/session-todos*` request (page, settings, health, event stream) teaches the Host its origin; only loopback (`127.0.0.1` / `localhost` / `[::1]`) is accepted and anything else is ignored;
+- the learned value is stored as `origin` (with `originLearnedAt`) in `session-todos.json`, so it **survives restarts**; a new port replaces it and refreshes the timestamp;
+- with no browser request at all (for example, only agent-tool use) auto-watch is **skipped and logged** — the tool call still succeeds and nothing errors or blocks.
+
 ## Settings drawer
 
 The gear on the right of the Todo page header opens the settings drawer (about 360px, scrollable; Escape or a backdrop click closes it and focus returns to the gear):
